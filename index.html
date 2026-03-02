@@ -74,6 +74,8 @@ header {
   grid-template-rows: auto auto minmax(170px, 1fr) auto auto;
   gap: 14px;
   padding: 16px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 #sidebar.open { transform: translateX(0); }
@@ -95,7 +97,7 @@ header {
   overflow: auto;
   display: grid;
   gap: 10px;
-  max-height: 220px;
+  max-height: 280px;
 }
 
 .friend-item {
@@ -745,11 +747,12 @@ const renderFriends = () => {
     })
     .forEach((friend) => {
       const li = document.createElement("li");
-      li.className = `friend-item ${selectedFriendEmail === friend.email ? "active" : ""}`;
-      li.innerHTML = `<div class="friend-row"><div><strong>${safeText(friend.name || "Friend")}</strong><br><small>${safeText(friend.email)}</small><div class="friend-badges">${friend.favorite ? "<small>お気に入り</small>" : ""}${friend.blocked ? "<small>ブロック中</small>" : ""}</div></div><div class="friend-actions"><button class="select">選択</button><button class="favorite">★</button><button class="rename">名前</button><button class="block">🚫</button><button class="delete">削除</button></div></div>`;
+      const friendEmail = normalizeEmail(friend.email || "");
+      li.className = `friend-item ${selectedFriendEmail === friendEmail ? "active" : ""}`;
+      li.innerHTML = `<div class="friend-row"><div><strong>${safeText(friend.name || "Friend")}</strong><br><small>${safeText(friendEmail || "(メール未設定)")}</small><div class="friend-badges">${friend.favorite ? "<small>お気に入り</small>" : ""}${friend.blocked ? "<small>ブロック中</small>" : ""}</div></div><div class="friend-actions"><button class="select">選択</button><button class="favorite">★</button><button class="rename">名前</button><button class="block">🚫</button><button class="delete">削除</button></div></div>`;
       li.querySelector(".select").style.background = "#0ea5e9";
       li.querySelector(".select").onclick = () => {
-        selectedFriendEmail = normalizeEmail(friend.email);
+        selectedFriendEmail = friendEmail;
         renderFriends();
         renderMessages();
         closeSidebar();
@@ -757,7 +760,7 @@ const renderFriends = () => {
       li.querySelector(".favorite").style.background = friend.favorite ? "#f59e0b" : "#64748b";
       li.querySelector(".favorite").onclick = async () => {
         if (!auth.currentUser) return;
-        await setDoc(doc(db, "users", auth.currentUser.uid, "friends", friendDocId(friend.email)), {
+        await setDoc(doc(db, "users", auth.currentUser.uid, "friends", friendDocId(friendEmail)), {
           favorite: !friend.favorite,
           updatedAt: serverTimestamp()
         }, { merge: true });
@@ -767,23 +770,23 @@ const renderFriends = () => {
         if (!auth.currentUser) return;
         const nextName = prompt("フレンド表示名を入力してください", friend.name || "");
         if (nextName === null) return;
-        await setDoc(doc(db, "users", auth.currentUser.uid, "friends", friendDocId(friend.email)), {
-          email: friend.email,
-          name: nextName.trim() || friend.email.split("@")[0],
+        await setDoc(doc(db, "users", auth.currentUser.uid, "friends", friendDocId(friendEmail)), {
+          email: friendEmail,
+          name: nextName.trim() || (friendEmail.split("@")[0] || "friend"),
           updatedAt: serverTimestamp()
         }, { merge: true });
       };
       li.querySelector(".block").style.background = friend.blocked ? "#991b1b" : "#475569";
       li.querySelector(".block").onclick = async () => {
         if (!auth.currentUser) return;
-        await setDoc(doc(db, "users", auth.currentUser.uid, "friends", friendDocId(friend.email)), {
+        await setDoc(doc(db, "users", auth.currentUser.uid, "friends", friendDocId(friendEmail)), {
           blocked: !friend.blocked,
           updatedAt: serverTimestamp()
         }, { merge: true });
       };
       li.querySelector(".delete").onclick = async () => {
         if (!auth.currentUser) return;
-        await deleteDoc(doc(db, "users", auth.currentUser.uid, "friends", friendDocId(friend.email)));
+        await deleteDoc(doc(db, "users", auth.currentUser.uid, "friends", friendDocId(friendEmail)));
       };
       ui.friendList.appendChild(li);
     });
@@ -962,7 +965,7 @@ onAuthStateChanged(auth, (user) => {
 
   onSnapshot(collection(db, "users", user.uid, "friends"), (snap) => {
     friends = [];
-    snap.forEach((d) => friends.push(d.data()));
+    snap.forEach((d) => friends.push({ id: d.id, ...d.data(), email: normalizeEmail(d.data().email || decodeURIComponent(d.id)) }));
     renderFriends();
     renderMessages();
   });
