@@ -2,55 +2,43 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>LINE Clone Ultimate</title>
+<title>LINE Ultimate</title>
 <style>
-body { font-family: sans-serif; background:#e5ddd5; }
-#chat { display:none; }
-.message { padding:8px; margin:5px; border-radius:10px; max-width:60%; }
-.me { background:#9fe8a3; margin-left:auto; }
-.other { background:white; }
+body{margin:0;font-family:sans-serif;background:#e5ddd5}
+#sidebar{width:30%;float:left;background:white;height:100vh;overflow:auto}
+#chatArea{width:70%;float:left;height:100vh;display:flex;flex-direction:column}
+#messages{flex:1;overflow:auto;padding:10px}
+.message{padding:8px;margin:5px;border-radius:10px;max-width:60%}
+.me{background:#9fe8a3;margin-left:auto}
+.other{background:white}
+#inputArea{display:flex}
 </style>
 </head>
 <body>
 
-<h2>LINE Clone Ultimate</h2>
+<div id="sidebar">
+<h3>Rooms</h3>
+<button id="createOpenRoom">+ Open Room</button>
+<div id="roomList"></div>
+<hr>
+<button id="profileBtn">Profile</button>
+<button id="logoutBtn">Logout</button>
+</div>
 
-<h3>Login</h3>
-<input id="email" placeholder="Email">
-<input id="password" type="password" placeholder="Password">
-<button id="registerBtn">Register</button>
-<button id="emailLoginBtn">Email Login</button>
-<button id="googleLoginBtn">Google Login</button>
-
-<div id="chat">
-  <h3 id="welcome"></h3>
-  <button id="logoutBtn">Logout</button>
-  <br><br>
-  <input id="msg" placeholder="message">
-  <button id="sendBtn">Send</button>
-  <div id="messages"></div>
+<div id="chatArea">
+<div id="messages"></div>
+<div id="inputArea">
+<input id="msg" placeholder="message" style="flex:1">
+<button id="sendBtn">Send</button>
+<button id="stampBtn">😊</button>
+<button id="aiBtn">AI</button>
+</div>
 </div>
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { 
-  getAuth, 
-  signInWithPopup, 
-  GoogleAuthProvider,
-  createUserWithEmailAndPassword,
-  signInWithEmailAndPassword,
-  onAuthStateChanged,
-  signOut
-} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-import { 
-  getFirestore, 
-  collection, 
-  addDoc, 
-  onSnapshot, 
-  query, 
-  orderBy, 
-  serverTimestamp 
-} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import { getAuth,onAuthStateChanged,signOut } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+import { getFirestore,collection,addDoc,onSnapshot,doc,setDoc,getDoc,query,orderBy,serverTimestamp,updateDoc,arrayUnion } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyDNUzhTrnAAUJye82vNZEy0Sgnj7e8IR9E",
@@ -65,59 +53,84 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-const registerBtn = document.getElementById("registerBtn");
-const emailLoginBtn = document.getElementById("emailLoginBtn");
-const googleLoginBtn = document.getElementById("googleLoginBtn");
-const logoutBtn = document.getElementById("logoutBtn");
-
-registerBtn.onclick = async () => {
-  const email = email.value;
-  const password = password.value;
-  await createUserWithEmailAndPassword(auth,email,password);
-};
-
-emailLoginBtn.onclick = async () => {
-  await signInWithEmailAndPassword(auth,email.value,password.value);
-};
-
-googleLoginBtn.onclick = async () => {
-  const provider = new GoogleAuthProvider();
-  await signInWithPopup(auth,provider);
-};
-
-logoutBtn.onclick = async () => {
-  await signOut(auth);
-};
+let currentRoom = null;
 
 onAuthStateChanged(auth,(user)=>{
-  if(user){
-    document.getElementById("chat").style.display="block";
-    document.getElementById("welcome").innerText="Hello "+user.email;
-  }
+if(!user) location.href="login.html";
+loadRooms();
 });
 
-document.getElementById("sendBtn").onclick = async ()=>{
-  const text = msg.value;
-  if(!text) return;
-  await addDoc(collection(db,"messages"),{
-    text,
-    uid:auth.currentUser.uid,
-    createdAt:serverTimestamp()
-  });
-  msg.value="";
+async function loadRooms(){
+const snap = await getDoc(doc(db,"rooms","global"));
+if(!snap.exists()){
+await setDoc(doc(db,"rooms","global"),{
+type:"open",
+members:[auth.currentUser.uid]
+});
+}
+currentRoom="global";
+listenMessages();
+}
+
+function listenMessages(){
+onSnapshot(query(collection(db,"rooms",currentRoom,"messages"),orderBy("createdAt")),snap=>{
+const div=document.getElementById("messages");
+div.innerHTML="";
+snap.forEach(d=>{
+const data=d.data();
+const m=document.createElement("div");
+m.className="message "+(data.uid===auth.currentUser.uid?"me":"other");
+m.innerText=data.text;
+div.appendChild(m);
+
+if(!data.readBy?.includes(auth.currentUser.uid)){
+updateDoc(d.ref,{
+readBy:arrayUnion(auth.currentUser.uid)
+});
+}
+});
+});
+}
+
+document.getElementById("sendBtn").onclick=async()=>{
+await addDoc(collection(db,"rooms",currentRoom,"messages"),{
+text:msg.value,
+uid:auth.currentUser.uid,
+type:"text",
+readBy:[auth.currentUser.uid],
+createdAt:serverTimestamp()
+});
+msg.value="";
 };
 
-onSnapshot(query(collection(db,"messages"),orderBy("createdAt")),snapshot=>{
-  const div = document.getElementById("messages");
-  div.innerHTML="";
-  snapshot.forEach(doc=>{
-    const data = doc.data();
-    const p = document.createElement("div");
-    p.className="message "+(data.uid===auth.currentUser?.uid?"me":"other");
-    p.innerText=data.text;
-    div.appendChild(p);
-  });
+document.getElementById("stampBtn").onclick=async()=>{
+await addDoc(collection(db,"rooms",currentRoom,"messages"),{
+text:"😊",
+uid:auth.currentUser.uid,
+type:"stamp",
+readBy:[auth.currentUser.uid],
+createdAt:serverTimestamp()
 });
+};
+
+document.getElementById("aiBtn").onclick=async()=>{
+const res=await fetch("https://YOUR_FUNCTION_URL",{
+method:"POST",
+headers:{"Content-Type":"application/json"},
+body:JSON.stringify({text:msg.value})
+});
+const data=await res.json();
+
+await addDoc(collection(db,"rooms",currentRoom,"messages"),{
+text:data.reply,
+uid:"AI",
+type:"ai",
+readBy:[],
+createdAt:serverTimestamp()
+});
+};
+
+document.getElementById("logoutBtn").onclick=()=>signOut(auth);
 </script>
 </body>
 </html>
