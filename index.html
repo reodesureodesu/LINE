@@ -2,73 +2,104 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>LINE Free Ultimate</title>
+<title>LINE Ultimate</title>
 <style>
-body{margin:0;font-family:sans-serif;background:#e5ddd5}
-#authBox,#app{padding:16px}
-#app{display:none}
-#layout{display:flex;height:100vh}
-#sidebar{width:30%;background:#fff;padding:10px;box-sizing:border-box}
-#chatArea{width:70%;display:flex;flex-direction:column}
-#messages{flex:1;overflow:auto;padding:10px}
-.message{padding:8px;margin:5px;border-radius:10px;max-width:60%}
-.me{background:#9fe8a3;margin-left:auto}
-.other{background:#fff}
-#inputArea{display:flex}
-button{margin:4px 0}
-input{margin:4px 0;padding:6px}
-.small{font-size:11px;opacity:.7}
+body{
+  margin:0;
+  font-family:sans-serif;
+  background:linear-gradient(135deg,#00c6ff,#0072ff);
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  height:100vh;
+}
+#app{
+  width:400px;
+  height:650px;
+  background:white;
+  border-radius:20px;
+  display:flex;
+  flex-direction:column;
+  overflow:hidden;
+}
+header{
+  background:#06c755;
+  color:white;
+  padding:15px;
+  text-align:center;
+  font-weight:bold;
+}
+#messages{
+  flex:1;
+  overflow-y:auto;
+  padding:10px;
+}
+.msg{
+  margin:5px 0;
+  padding:8px 12px;
+  border-radius:15px;
+  max-width:70%;
+  word-wrap:break-word;
+}
+.me{background:#06c755;color:white;margin-left:auto;}
+.other{background:#eee;}
+img.chatimg{max-width:150px;border-radius:10px;margin-top:5px;}
+#inputArea{
+  display:flex;
+  padding:10px;
+  gap:5px;
+}
+input,button{
+  padding:8px;
+  border-radius:10px;
+  border:1px solid #ccc;
+}
+button{
+  background:#06c755;
+  color:white;
+  border:none;
+  cursor:pointer;
+}
+#auth{
+  padding:20px;
+  text-align:center;
+}
 </style>
 </head>
 <body>
+<div id="app">
+<header>LINE Ultimate</header>
 
-<div id="authBox">
-  <h2>Login / Register</h2>
-  <input id="email" placeholder="Email"><br>
-  <input id="password" type="password" placeholder="Password"><br>
-  <button id="registerBtn">Register</button>
-  <button id="emailLoginBtn">Email Login</button>
-  <button id="googleLoginBtn">Google Login</button>
-  <div id="authMsg" class="small"></div>
+<div id="auth">
+  <button id="googleLogin">Googleログイン</button><br><br>
+  <input id="email" placeholder="email"><br><br>
+  <input id="password" type="password" placeholder="password"><br><br>
+  <button id="emailRegister">新規登録</button>
+  <button id="emailLogin">ログイン</button>
 </div>
 
-<div id="app">
-  <div id="layout">
-    <div id="sidebar">
-      <h3>Profile</h3>
-      <div class="small">Logged in as: <span id="who"></span></div>
-      <input id="nameInput" placeholder="Name"><br>
-      <input id="bioInput" placeholder="Bio"><br>
-      <input id="bgInput" placeholder="Background color (#e5ddd5)"><br>
-      <button id="saveProfile">Save</button>
-      <hr>
-      <button id="logoutBtn">Logout</button>
-    </div>
-    <div id="chatArea">
-      <div id="messages"></div>
-      <div id="inputArea">
-        <input id="msg" style="flex:1" placeholder="message">
-        <button id="sendBtn">Send</button>
-        <button id="stampBtn">😊</button>
-        <button id="aiBtn">AI</button>
-      </div>
-    </div>
+<div id="chat" style="display:none;">
+  <div id="messages"></div>
+  <div id="inputArea">
+    <input id="msg" placeholder="message">
+    <input type="file" id="imageInput">
+    <button id="send">送信</button>
+    <button id="ai">AI</button>
   </div>
+  <button id="logout">ログアウト</button>
+</div>
 </div>
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import {
-  getAuth,onAuthStateChanged,signOut,
-  createUserWithEmailAndPassword,signInWithEmailAndPassword,
-  signInWithPopup,GoogleAuthProvider
-} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-import {
-  getFirestore,doc,setDoc,getDoc,collection,addDoc,
-  onSnapshot,query,orderBy,serverTimestamp,updateDoc,arrayUnion
-} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import { getAuth, GoogleAuthProvider, signInWithPopup,
+createUserWithEmailAndPassword, signInWithEmailAndPassword,
+onAuthStateChanged, signOut } 
+from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+import { getFirestore, collection, addDoc, onSnapshot,
+query, orderBy, serverTimestamp } 
+from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
-/* ====== あなたの設定に置き換え ====== */
   const firebaseConfig = {
   apiKey: "AIzaSyDNUzhTrnAAUJye82vNZEy0Sgnj7e8IR9E",
   authDomain: "line-16068.firebaseapp.com",
@@ -79,151 +110,103 @@ import {
 };
   
 const GEMMA_KEY = "AIzaSyDY0Jcd-72QPZlfOJAtUCYxeRrjHBvJRtQ";
-/* =================================== */
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-const authBox = document.getElementById("authBox");
-const appBox = document.getElementById("app");
-const authMsg = document.getElementById("authMsg");
-const who = document.getElementById("who");
+const googleProvider = new GoogleAuthProvider();
 
-let unsub = null;
-
-/* ====== 認証UI ====== */
-registerBtn.onclick = async ()=>{
-  try{
-    await createUserWithEmailAndPassword(auth,email.value,password.value);
-  }catch(e){ authMsg.textContent = e.message; }
-};
-emailLoginBtn.onclick = async ()=>{
-  try{
-    await signInWithEmailAndPassword(auth,email.value,password.value);
-  }catch(e){ authMsg.textContent = e.message; }
-};
-googleLoginBtn.onclick = async ()=>{
-  try{
-    const provider = new GoogleAuthProvider();
-    await signInWithPopup(auth,provider);
-  }catch(e){ authMsg.textContent = e.message; }
-};
-logoutBtn.onclick = async ()=>{
-  if(auth.currentUser){
-    await setDoc(doc(db,"users",auth.currentUser.uid),{online:false},{merge:true});
-  }
-  await signOut(auth);
+document.getElementById("googleLogin").onclick=()=>{
+  signInWithPopup(auth,googleProvider);
 };
 
-/* ====== ログイン状態監視 ====== */
-onAuthStateChanged(auth, async (user)=>{
+document.getElementById("emailRegister").onclick=()=>{
+  createUserWithEmailAndPassword(auth,
+    email.value,password.value);
+};
+
+document.getElementById("emailLogin").onclick=()=>{
+  signInWithEmailAndPassword(auth,
+    email.value,password.value);
+};
+
+document.getElementById("logout").onclick=()=>{
+  signOut(auth);
+};
+
+onAuthStateChanged(auth,user=>{
   if(user){
-    authBox.style.display="none";
-    appBox.style.display="block";
-    who.textContent = user.email || user.displayName;
-
-    await setDoc(doc(db,"users",user.uid),{online:true},{merge:true});
-    const snap = await getDoc(doc(db,"users",user.uid));
-    const data = snap.data()||{};
-    nameInput.value = data.name||"";
-    bioInput.value = data.bio||"";
-    bgInput.value = data.background||"";
-    if(data.background) document.body.style.background=data.background;
-
-    startListening();
+    authDiv.style.display="none";
+    chat.style.display="block";
   }else{
-    if(unsub) unsub();
-    appBox.style.display="none";
-    authBox.style.display="block";
+    authDiv.style.display="block";
+    chat.style.display="none";
   }
 });
 
-/* ====== チャット監視 ====== */
-function startListening(){
-  unsub = onSnapshot(
-    query(collection(db,"rooms","global","messages"),orderBy("createdAt")),
-    snap=>{
-      const div=document.getElementById("messages");
-      div.innerHTML="";
-      snap.forEach(d=>{
-        const data=d.data();
-        const m=document.createElement("div");
-        const isMe = data.uid===auth.currentUser?.uid;
-        m.className="message "+(isMe?"me":"other");
-        m.innerHTML = data.text;
-        if(data.readBy?.length>1) m.innerHTML += "<div class='small'>既読</div>";
-        div.appendChild(m);
+document.getElementById("send").onclick=async()=>{
+  if(!auth.currentUser)return;
+  const text=msg.value;
+  const file=imageInput.files[0];
+  let imageBase64=null;
 
-        if(!data.readBy?.includes(auth.currentUser.uid)){
-          updateDoc(d.ref,{readBy:arrayUnion(auth.currentUser.uid)});
-        }
-      });
-      div.scrollTop = div.scrollHeight;
-    }
-  );
-}
+  if(file){
+    imageBase64=await new Promise(res=>{
+      const reader=new FileReader();
+      reader.onload=()=>res(reader.result);
+      reader.readAsDataURL(file);
+    });
+  }
 
-/* ====== 送信 ====== */
-sendBtn.onclick = async ()=>{
-  if(!auth.currentUser){ alert("ログインしてください"); return; }
-  if(!msg.value) return;
-  await addDoc(collection(db,"rooms","global","messages"),{
-    text: msg.value,
-    uid: auth.currentUser.uid,
-    readBy:[auth.currentUser.uid],
-    createdAt: serverTimestamp()
-  });
-  msg.value="";
-};
-
-stampBtn.onclick = async ()=>{
-  if(!auth.currentUser){ alert("ログインしてください"); return; }
-  await addDoc(collection(db,"rooms","global","messages"),{
-    text:"😊",
+  await addDoc(collection(db,"messages"),{
+    text,
+    image:imageBase64,
     uid:auth.currentUser.uid,
-    readBy:[auth.currentUser.uid],
     createdAt:serverTimestamp()
   });
-};
 
-/* ====== AI ====== */
-aiBtn.onclick = async ()=>{
-  if(!auth.currentUser){ alert("ログインしてください"); return; }
-  if(!msg.value) return;
-
-  const response = await fetch(
-    "https://generativelanguage.googleapis.com/v1beta/models/gemma-2b:generateContent?key="+GEMMA_KEY,
-    {
-      method:"POST",
-      headers:{ "Content-Type":"application/json" },
-      body:JSON.stringify({
-        contents:[{parts:[{text:msg.value}]}]
-      })
-    }
-  );
-  const data = await response.json();
-  const reply = data?.candidates?.[0]?.content?.parts?.[0]?.text || "AIエラー";
-
-  await addDoc(collection(db,"rooms","global","messages"),{
-    text: reply,
-    uid:"AI",
-    readBy:[],
-    createdAt:serverTimestamp()
-  });
   msg.value="";
+  imageInput.value="";
 };
 
-/* ====== プロフィール保存 ====== */
-saveProfile.onclick = async ()=>{
-  if(!auth.currentUser) return;
-  await setDoc(doc(db,"users",auth.currentUser.uid),{
-    name:nameInput.value,
-    bio:bioInput.value,
-    background:bgInput.value
-  },{merge:true});
-  if(bgInput.value) document.body.style.background=bgInput.value;
-  alert("保存しました");
+onSnapshot(query(collection(db,"messages"),
+orderBy("createdAt")),(snap)=>{
+  messages.innerHTML="";
+  snap.forEach(doc=>{
+    const data=doc.data();
+    const div=document.createElement("div");
+    div.className="msg "+(data.uid===auth.currentUser?.uid?"me":"other");
+    div.innerHTML=data.text||"";
+    if(data.image){
+      const img=document.createElement("img");
+      img.src=data.image;
+      img.className="chatimg";
+      div.appendChild(img);
+    }
+    messages.appendChild(div);
+  });
+});
+
+// 🔥 gemma3-4bit
+document.getElementById("ai").onclick=async()=>{
+  const text=msg.value;
+  if(!text)return;
+
+  const res=await fetch("https://api.groq.com/openai/v1/chat/completions",{
+    method:"POST",
+    headers:{
+      "Content-Type":"application/json",
+      "Authorization":"org_01kjpzdja9fantcz1g0jmhare9"
+    },
+    body:JSON.stringify({
+      model:"gemma-7b-it",
+      messages:[{role:"user",content:text}]
+    })
+  });
+
+  const data=await res.json();
+  msg.value=data.choices[0].message.content;
 };
 </script>
 </body>
