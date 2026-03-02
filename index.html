@@ -64,16 +64,16 @@ header {
 #sidebar {
   position: absolute;
   inset: 0 auto 0 0;
-  width: min(88%, 340px);
+  width: min(92%, 360px);
   background: var(--surface);
   border-right: 1px solid var(--border);
   transform: translateX(-100%);
   transition: transform 0.2s ease;
   z-index: 9;
   display: grid;
-  grid-template-rows: auto auto 1fr auto;
-  gap: 10px;
-  padding: 14px;
+  grid-template-rows: auto auto minmax(170px, 1fr) auto auto;
+  gap: 14px;
+  padding: 16px;
 }
 
 #sidebar.open { transform: translateX(0); }
@@ -94,13 +94,14 @@ header {
   margin: 0;
   overflow: auto;
   display: grid;
-  gap: 8px;
+  gap: 10px;
+  max-height: 220px;
 }
 
 .friend-item {
   border: 1px solid var(--border);
   border-radius: 12px;
-  padding: 8px;
+  padding: 10px;
   background: var(--surface-soft);
 }
 
@@ -269,6 +270,30 @@ header {
 
 input, button { font: inherit; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--border); }
 input { width: 100%; background: var(--surface-soft); }
+
+input[type="file"] {
+  width: 100%;
+  border: 1px solid #dfe6e3;
+  background: #f6faf8;
+  border-radius: 14px;
+  padding: 8px;
+  color: #374151;
+}
+
+input[type="file"]::file-selector-button {
+  border: none;
+  background: var(--line-green);
+  color: white;
+  border-radius: 999px;
+  padding: 8px 14px;
+  margin-right: 10px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+input[type="file"]::file-selector-button:hover {
+  opacity: 0.92;
+}
 button { background: var(--line-green); color: white; border: none; cursor: pointer; font-weight: 600; }
 #googleLogin { background: #fff; color: #111827; border: 1px solid #d1d5db; }
 #logout { margin: 0 12px 12px; background: #ef4444; }
@@ -334,6 +359,11 @@ button { background: var(--line-green); color: white; border: none; cursor: poin
   background-repeat: no-repeat;
 }
 
+.sidebar-section {
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+}
+
 body.dark {
   --bg-gradient: linear-gradient(160deg, #0f172a 0%, #111827 60%, #1f2937 100%);
   --surface: #111827;
@@ -361,13 +391,13 @@ body.dark .other { background: #1f2937; color: #f9fafb; }
     </div>
     <input id="friendSearchInput" placeholder="フレンド検索" style="margin-top:8px">
     <ul id="friendList"></ul>
-    <div>
+    <div class="sidebar-section">
       <label for="profileImageInput">プロフィール画像（GIF可）</label>
       <input id="profileImageInput" type="file" accept="image/*,.gif">
       <label for="backgroundImageInput" style="margin-top:8px;display:block;">背景画像（GIF可）</label>
       <input id="backgroundImageInput" type="file" accept="image/*,.gif">
     </div>
-    <div>
+    <div class="sidebar-section">
       <label for="fontSizeSlider">文字サイズスライドバー</label>
       <input id="fontSizeSlider" type="range" min="14" max="24" value="18">
     </div>
