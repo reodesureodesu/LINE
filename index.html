@@ -209,6 +209,38 @@ header {
 #backgroundImageInput { grid-column: 1 / -1; }
 #actions { display: flex; gap: 8px; }
 
+#stampBar {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding: 8px 12px 4px;
+  border-top: 1px dashed var(--border);
+}
+
+.stamp-btn {
+  min-width: 38px;
+  height: 34px;
+  border-radius: 10px;
+  padding: 0;
+  font-size: 1.1rem;
+  background: #e5e7eb;
+  color: #111827;
+}
+
+.friend-badges {
+  display: flex;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.friend-badges small {
+  font-size: 0.65rem;
+  background: #e0f2fe;
+  color: #0369a1;
+  border-radius: 999px;
+  padding: 1px 6px;
+}
+
 input, button { font: inherit; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--border); }
 input { width: 100%; background: var(--surface-soft); }
 button { background: var(--line-green); color: white; border: none; cursor: pointer; font-weight: 600; }
@@ -240,7 +272,7 @@ body.dark {
   --text-muted: #9ca3af;
   --border: #374151;
 }
-body.dark #toolbar, body.dark #inputArea, body.dark #googleLogin, body.dark #bottomBar { background: #1f2937; color: #f9fafb; }
+body.dark #toolbar, body.dark #inputArea, body.dark #googleLogin, body.dark #bottomBar, body.dark #stampBar { background: #1f2937; color: #f9fafb; }
 body.dark .other { background: #1f2937; color: #f9fafb; }
 </style>
 </head>
@@ -255,6 +287,7 @@ body.dark .other { background: #1f2937; color: #f9fafb; }
       <input id="friendName" placeholder="フレンド表示名（任意）" style="margin-top:8px">
       <button id="addFriend" style="margin-top:8px;width:100%">フレンド追加</button>
     </div>
+    <input id="friendSearchInput" placeholder="フレンド検索" style="margin-top:8px">
     <ul id="friendList"></ul>
     <div>
       <label for="profileImageInput">プロフィール画像（GIF可）</label>
@@ -295,6 +328,7 @@ body.dark .other { background: #1f2937; color: #f9fafb; }
       <small id="chatMode" style="align-self:center;white-space:nowrap">全体</small>
     </div>
     <div id="messages"></div>
+    <div id="stampBar"></div>
     <div id="bottomBar">
       <div id="inputArea">
         <input id="msg" placeholder="message">
@@ -348,7 +382,9 @@ const ui = {
   backdrop: document.getElementById("backdrop"),
   friendEmail: document.getElementById("friendEmail"),
   friendName: document.getElementById("friendName"),
+  friendSearchInput: document.getElementById("friendSearchInput"),
   friendList: document.getElementById("friendList"),
+  stampBar: document.getElementById("stampBar"),
   fontSizeSlider: document.getElementById("fontSizeSlider")
 };
 
@@ -371,6 +407,13 @@ const authErrorMessages = {
 
 const friendDocId = (email) => encodeURIComponent(email.trim().toLowerCase());
 const safeText = (value="") => value.replace(/[<>]/g, "");
+const STAMPS = ["😀","😂","🥺","😍","😭","👍","🙏","🔥","🎉","💯","😎","🤔","🥳","🙌","🌸","❤️","💚","💙","🫶","😇","😴","🥲","😡","👏","✨","🍀","🍣","🍜","☕","🐱","🐶","🎮","📚","🎵","🚀","⚽","💡","🧋","🍓","🌈"];
+
+const toMillis = (value) => {
+  const date = value?.toDate ? value.toDate() : null;
+  return date ? date.getTime() : 0;
+};
+
 
 const setStatus = (message, type="info") => {
   if (!message) {
@@ -428,8 +471,34 @@ const closeSidebar = () => {
   ui.backdrop.classList.remove("show");
 };
 
+const renderStampBar = () => {
+  ui.stampBar.innerHTML = "";
+  STAMPS.forEach((stamp) => {
+    const btn = document.createElement("button");
+    btn.className = "stamp-btn";
+    btn.textContent = stamp;
+    btn.onclick = () => {
+      ui.msgInput.value = (ui.msgInput.value + stamp).trimStart();
+      ui.msgInput.focus();
+    };
+    ui.stampBar.appendChild(btn);
+  });
+};
+
+const markMessagesAsRead = async (messages, user) => {
+  for (const msg of messages) {
+    if (!msg?.id || msg.uid === user.uid) continue;
+    const already = msg.readBy && msg.readBy[user.uid];
+    if (already) continue;
+    await updateDoc(doc(db, "messages", msg.id), {
+      [`readBy.${user.uid}`]: serverTimestamp()
+    });
+  }
+};
+
 const renderFriends = () => {
   ui.friendList.innerHTML = "";
+  const keyword = (ui.friendSearchInput?.value || "").trim().toLowerCase();
 
   const globalItem = document.createElement("li");
   globalItem.className = `friend-item ${selectedFriendEmail ? "" : "active"}`;
@@ -441,34 +510,58 @@ const renderFriends = () => {
   };
   ui.friendList.appendChild(globalItem);
 
-  friends.forEach((friend) => {
-    const li = document.createElement("li");
-    li.className = `friend-item ${selectedFriendEmail === friend.email ? "active" : ""}`;
-    li.innerHTML = `<div class="friend-row"><div><strong>${safeText(friend.name || "Friend")}</strong><br><small>${safeText(friend.email)}</small></div><div><button class="select">選択</button><button class="rename">名前</button><button class="delete">削除</button></div></div>`;
-    li.querySelector(".select").style.background = "#0ea5e9";
-    li.querySelector(".select").onclick = () => {
-      selectedFriendEmail = friend.email;
-      renderFriends();
-      renderMessages();
-      closeSidebar();
-    };
-    li.querySelector(".rename").style.background = "#6366f1";
-    li.querySelector(".rename").onclick = async () => {
-      if (!auth.currentUser) return;
-      const nextName = prompt("フレンド表示名を入力してください", friend.name || "");
-      if (nextName === null) return;
-      await setDoc(doc(db, "users", auth.currentUser.uid, "friends", friendDocId(friend.email)), {
-        email: friend.email,
-        name: nextName.trim() || friend.email.split("@")[0],
-        updatedAt: serverTimestamp()
-      }, { merge: true });
-    };
-    li.querySelector(".delete").onclick = async () => {
-      if (!auth.currentUser) return;
-      await deleteDoc(doc(db, "users", auth.currentUser.uid, "friends", friendDocId(friend.email)));
-    };
-    ui.friendList.appendChild(li);
-  });
+  const sortedFriends = [...friends]
+    .sort((a, b) => Number(Boolean(b.favorite)) - Number(Boolean(a.favorite)) || (toMillis(b.lastChattedAt) - toMillis(a.lastChattedAt)));
+
+  sortedFriends
+    .filter((friend) => {
+      if (!keyword) return true;
+      return (friend.email || "").toLowerCase().includes(keyword) || (friend.name || "").toLowerCase().includes(keyword);
+    })
+    .forEach((friend) => {
+      const li = document.createElement("li");
+      li.className = `friend-item ${selectedFriendEmail === friend.email ? "active" : ""}`;
+      li.innerHTML = `<div class="friend-row"><div><strong>${safeText(friend.name || "Friend")}</strong><br><small>${safeText(friend.email)}</small><div class="friend-badges">${friend.favorite ? "<small>お気に入り</small>" : ""}${friend.blocked ? "<small>ブロック中</small>" : ""}</div></div><div><button class="select">選択</button><button class="favorite">★</button><button class="rename">名前</button><button class="block">🚫</button><button class="delete">削除</button></div></div>`;
+      li.querySelector(".select").style.background = "#0ea5e9";
+      li.querySelector(".select").onclick = () => {
+        selectedFriendEmail = friend.email;
+        renderFriends();
+        renderMessages();
+        closeSidebar();
+      };
+      li.querySelector(".favorite").style.background = friend.favorite ? "#f59e0b" : "#64748b";
+      li.querySelector(".favorite").onclick = async () => {
+        if (!auth.currentUser) return;
+        await setDoc(doc(db, "users", auth.currentUser.uid, "friends", friendDocId(friend.email)), {
+          favorite: !friend.favorite,
+          updatedAt: serverTimestamp()
+        }, { merge: true });
+      };
+      li.querySelector(".rename").style.background = "#6366f1";
+      li.querySelector(".rename").onclick = async () => {
+        if (!auth.currentUser) return;
+        const nextName = prompt("フレンド表示名を入力してください", friend.name || "");
+        if (nextName === null) return;
+        await setDoc(doc(db, "users", auth.currentUser.uid, "friends", friendDocId(friend.email)), {
+          email: friend.email,
+          name: nextName.trim() || friend.email.split("@")[0],
+          updatedAt: serverTimestamp()
+        }, { merge: true });
+      };
+      li.querySelector(".block").style.background = friend.blocked ? "#991b1b" : "#475569";
+      li.querySelector(".block").onclick = async () => {
+        if (!auth.currentUser) return;
+        await setDoc(doc(db, "users", auth.currentUser.uid, "friends", friendDocId(friend.email)), {
+          blocked: !friend.blocked,
+          updatedAt: serverTimestamp()
+        }, { merge: true });
+      };
+      li.querySelector(".delete").onclick = async () => {
+        if (!auth.currentUser) return;
+        await deleteDoc(doc(db, "users", auth.currentUser.uid, "friends", friendDocId(friend.email)));
+      };
+      ui.friendList.appendChild(li);
+    });
 };
 
 const filteredMessages = () => {
@@ -509,7 +602,8 @@ const renderMessages = () => {
   ui.messagesDiv.innerHTML = "";
   ui.chatMode.textContent = selectedFriendEmail ? `1:1 ${selectedFriendEmail}` : "全体";
 
-  filteredMessages().forEach((data) => {
+  const visibleMessages = filteredMessages();
+  visibleMessages.forEach((data) => {
     const div = document.createElement("div");
     div.className = "msg " + (data.uid === user.uid ? "me" : "other");
     div.textContent = data.text || "";
@@ -532,7 +626,8 @@ const renderMessages = () => {
 
     const meta = document.createElement("small");
     meta.className = "message-meta";
-    meta.textContent = `${data.name || "匿名"}・${formatTime(data.createdAt)}${data.editedAt ? " (編集済み)" : ""}`;
+    const readCount = data.readBy ? Math.max(Object.keys(data.readBy).length - 1, 0) : 0;
+    meta.textContent = `${data.name || "匿名"}・${formatTime(data.createdAt)}${data.editedAt ? " (編集済み)" : ""}${data.uid === user.uid ? ` ・既読${readCount}` : ""}`;
     div.appendChild(meta);
 
     if (data.uid === user.uid && data.id) {
@@ -564,11 +659,14 @@ const renderMessages = () => {
   });
 
   ui.messagesDiv.scrollTop = ui.messagesDiv.scrollHeight;
+  markMessagesAsRead(visibleMessages, user);
 };
 
 document.getElementById("menuBtn").onclick = openSidebar;
 ui.backdrop.onclick = closeSidebar;
 document.getElementById("themeToggle").onclick = () => document.body.classList.toggle("dark");
+renderStampBar();
+ui.friendSearchInput.oninput = renderFriends;
 
 ui.fontSizeSlider.oninput = (event) => {
   document.documentElement.style.setProperty("--msg-font-size", `${event.target.value}px`);
@@ -677,6 +775,8 @@ document.getElementById("addFriend").onclick = async () => {
   await setDoc(doc(db, "users", auth.currentUser.uid, "friends", friendDocId(email)), {
     email,
     name: (ui.friendName.value || "").trim() || email.split("@")[0],
+    favorite: false,
+    blocked: false,
     createdAt: serverTimestamp()
   }, { merge: true });
 
@@ -688,6 +788,11 @@ document.getElementById("addFriend").onclick = async () => {
 
 document.getElementById("recordBtn").onclick = async () => {
   if (!auth.currentUser) return;
+  const currentFriend = friends.find((friend) => friend.email === selectedFriendEmail);
+  if (selectedFriendEmail && currentFriend?.blocked) {
+    setStatus("ブロック中のフレンドには送信できません。", "error");
+    return;
+  }
 
   if (mediaRecorder && mediaRecorder.state === "recording") {
     mediaRecorder.stop();
@@ -717,8 +822,15 @@ document.getElementById("recordBtn").onclick = async () => {
         senderEmail: auth.currentUser.email || "",
         targetEmail: selectedFriendEmail || null,
         uid: auth.currentUser.uid,
-        createdAt: serverTimestamp()
+        createdAt: serverTimestamp(),
+        readBy: { [auth.currentUser.uid]: true }
       });
+
+      if (selectedFriendEmail) {
+        await setDoc(doc(db, "users", auth.currentUser.uid, "friends", friendDocId(selectedFriendEmail)), {
+          lastChattedAt: serverTimestamp()
+        }, { merge: true });
+      }
 
       if (recordingStream) {
         recordingStream.getTracks().forEach((track) => track.stop());
@@ -736,6 +848,11 @@ document.getElementById("recordBtn").onclick = async () => {
 
 document.getElementById("send").onclick = async () => {
   if (!auth.currentUser) return;
+  const currentFriend = friends.find((friend) => friend.email === selectedFriendEmail);
+  if (selectedFriendEmail && currentFriend?.blocked) {
+    setStatus("ブロック中のフレンドには送信できません。", "error");
+    return;
+  }
   const text = ui.msgInput.value.trim();
 
   if (editingMessageId) {
@@ -770,8 +887,15 @@ document.getElementById("send").onclick = async () => {
     senderEmail: auth.currentUser.email || "",
     targetEmail: selectedFriendEmail || null,
     uid: auth.currentUser.uid,
-    createdAt: serverTimestamp()
+    createdAt: serverTimestamp(),
+    readBy: { [auth.currentUser.uid]: true }
   });
+
+  if (selectedFriendEmail) {
+    await setDoc(doc(db, "users", auth.currentUser.uid, "friends", friendDocId(selectedFriendEmail)), {
+      lastChattedAt: serverTimestamp()
+    }, { merge: true });
+  }
 
   ui.msgInput.value = "";
   ui.imageInput.value = "";
