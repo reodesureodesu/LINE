@@ -275,6 +275,50 @@ button { background: var(--line-green); color: white; border: none; cursor: poin
 #aiBtn { background: #6366f1; }
 #recordBtn { background: #ef4444; }
 
+
+#notifyBtn {
+  position: relative;
+  background: #0f172a;
+  min-width: 44px;
+}
+
+#notifyCount {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  background: #ef4444;
+  color: #fff;
+  border-radius: 999px;
+  font-size: 0.65rem;
+  padding: 1px 5px;
+}
+
+#notifyPanel {
+  position: absolute;
+  top: 70px;
+  right: 10px;
+  width: min(90%, 320px);
+  max-height: 60%;
+  overflow: auto;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  z-index: 20;
+  padding: 10px;
+  display: none;
+  box-shadow: var(--shadow);
+}
+
+.notify-item {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 8px;
+  margin-top: 8px;
+  background: var(--surface-soft);
+}
+
+.notify-item button { margin-top: 6px; padding: 6px 8px; border-radius: 8px; }
+
 #profileAvatar {
   width: 34px;
   height: 34px;
@@ -311,7 +355,9 @@ body.dark .other { background: #1f2937; color: #f9fafb; }
     <div>
       <input id="friendEmail" placeholder="friend@example.com">
       <input id="friendName" placeholder="フレンド表示名（任意）" style="margin-top:8px">
-      <button id="addFriend" style="margin-top:8px;width:100%">フレンド追加</button>
+      <button id="addFriend" style="margin-top:8px;width:100%">メールでフレンド追加</button>
+      <input id="friendRequestName" placeholder="表示名でフレンド申請" style="margin-top:8px">
+      <button id="sendFriendRequest" style="margin-top:8px;width:100%;background:#6366f1">名前で申請を送る</button>
     </div>
     <input id="friendSearchInput" placeholder="フレンド検索" style="margin-top:8px">
     <ul id="friendList"></ul>
@@ -331,10 +377,13 @@ body.dark .other { background: #1f2937; color: #f9fafb; }
     <button id="menuBtn">☰</button>
     <strong style="text-align:center;letter-spacing:.02em">LINE Ultimate</strong>
     <div style="display:flex; gap:8px; justify-self:end; align-items:center;">
+      <button id="notifyBtn">🔔<span id="notifyCount">0</span></button>
       <img id="profileAvatar" alt="avatar">
       <button id="themeToggle">テーマ</button>
     </div>
   </header>
+
+  <div id="notifyPanel"><div style="display:flex;justify-content:space-between;align-items:center;"><strong>通知ボックス</strong><button id="closeNotify">閉じる</button></div><div id="notifyList"></div></div>
 
   <div id="auth">
     <h2 style="margin:0">ログインしてチャットを始めましょう</h2>
@@ -343,7 +392,7 @@ body.dark .other { background: #1f2937; color: #f9fafb; }
     <button id="googleLogin">Googleログイン</button>
     <input id="email" placeholder="email" autocomplete="email">
     <input id="password" type="password" placeholder="password" autocomplete="current-password">
-    <input id="displayName" placeholder="表示名（任意）" autocomplete="nickname">
+    <input id="displayName" placeholder="表示名（初回のみ設定）" autocomplete="nickname">
     <button id="register">新規登録</button>
     <button id="login">ログイン</button>
   </div>
@@ -373,7 +422,7 @@ body.dark .other { background: #1f2937; color: #f9fafb; }
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, GoogleAuthProvider, signInWithPopup, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, signOut, updateProfile } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-import { getFirestore, collection, addDoc, onSnapshot, query, orderBy, serverTimestamp, doc, setDoc, deleteDoc, updateDoc, arrayUnion } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import { getFirestore, collection, addDoc, onSnapshot, query, orderBy, serverTimestamp, doc, setDoc, deleteDoc, updateDoc, arrayUnion, where, getDocs, limit } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyDNUzhTrnAAUJye82vNZEy0Sgnj7e8IR9E",
@@ -408,9 +457,14 @@ const ui = {
   backdrop: document.getElementById("backdrop"),
   friendEmail: document.getElementById("friendEmail"),
   friendName: document.getElementById("friendName"),
+  friendRequestName: document.getElementById("friendRequestName"),
   friendSearchInput: document.getElementById("friendSearchInput"),
   friendList: document.getElementById("friendList"),
   stampBar: document.getElementById("stampBar"),
+  notifyBtn: document.getElementById("notifyBtn"),
+  notifyCount: document.getElementById("notifyCount"),
+  notifyPanel: document.getElementById("notifyPanel"),
+  notifyList: document.getElementById("notifyList"),
   fontSizeSlider: document.getElementById("fontSizeSlider")
 };
 
@@ -421,6 +475,7 @@ let editingMessageId = null;
 let mediaRecorder = null;
 let recordingStream = null;
 let userSettings = { profileImage: "", backgroundImage: "" };
+let notifications = [];
 
 const authErrorMessages = {
   "auth/email-already-in-use": "このメールアドレスはすでに登録されています。ログインをお試しください。",
@@ -474,12 +529,12 @@ const playPopSound = () => {
   const ctx = new AudioContextClass();
   const osc = ctx.createOscillator();
   const gain = ctx.createGain();
-  osc.type = "triangle";
-  osc.frequency.setValueAtTime(720, ctx.currentTime);
-  osc.frequency.exponentialRampToValueAtTime(420, ctx.currentTime + 0.08);
-  gain.gain.setValueAtTime(0.001, ctx.currentTime);
-  gain.gain.exponentialRampToValueAtTime(0.12, ctx.currentTime + 0.01);
-  gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.12);
+  osc.type = "square";
+  osc.frequency.setValueAtTime(980, ctx.currentTime);
+  osc.frequency.exponentialRampToValueAtTime(520, ctx.currentTime + 0.05);
+  gain.gain.setValueAtTime(0.0001, ctx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.18, ctx.currentTime + 0.006);
+  gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.09);
   osc.connect(gain);
   gain.connect(ctx.destination);
   osc.start();
@@ -541,7 +596,61 @@ const formatTime = (value) => {
   return date.toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" });
 };
 
+const renderNotifications = () => {
+  ui.notifyList.innerHTML = "";
+  ui.notifyCount.textContent = String(notifications.filter((n) => n.status === "pending").length);
+  notifications.forEach((notice) => {
+    const div = document.createElement("div");
+    div.className = "notify-item";
+    div.innerHTML = `<div><strong>${safeText(notice.fromName || "不明")}</strong> さんからフレンド申請</div><small>${safeText(notice.fromEmail || "")}</small>`;
+
+    if (notice.status === "pending") {
+      const accept = document.createElement("button");
+      accept.textContent = "承認して会話開始";
+      accept.style.background = "#06c755";
+      accept.onclick = async () => {
+        if (!auth.currentUser) return;
+        await setDoc(doc(db, "users", auth.currentUser.uid, "friends", friendDocId(notice.fromEmail)), {
+          email: normalizeEmail(notice.fromEmail),
+          name: notice.fromName || notice.fromEmail?.split("@")[0] || "friend",
+          favorite: false,
+          blocked: false,
+          createdAt: serverTimestamp()
+        }, { merge: true });
+        await setDoc(doc(db, "users", notice.fromUid, "friends", friendDocId(auth.currentUser.email || "")), {
+          email: normalizeEmail(auth.currentUser.email || ""),
+          name: auth.currentUser.displayName || userSettings.fixedName || (auth.currentUser.email || "").split("@")[0],
+          favorite: false,
+          blocked: false,
+          createdAt: serverTimestamp()
+        }, { merge: true });
+        await updateDoc(doc(db, "users", auth.currentUser.uid, "notifications", notice.id), { status: "accepted", acceptedAt: serverTimestamp() });
+      };
+      div.appendChild(accept);
+    } else {
+      const done = document.createElement("small");
+      done.textContent = "承認済み";
+      div.appendChild(done);
+    }
+    ui.notifyList.appendChild(div);
+  });
+};
+
+const ensureFixedDisplayName = async (user) => {
+  if (!user) return;
+  const candidate = (ui.displayNameInput.value || user.displayName || user.email?.split("@")[0] || "ユーザー").trim();
+  if (!userSettings.fixedName) {
+    await setDoc(doc(db, "users", user.uid), { fixedName: candidate }, { merge: true });
+  }
+  ui.displayNameInput.disabled = true;
+  ui.displayNameInput.value = userSettings.fixedName || candidate;
+};
+
 const openSidebar = () => {
+  if (!auth.currentUser) {
+    setStatus("ログイン後にサイドバーを利用できます。", "error");
+    return;
+  }
   ui.sidebar.classList.add("open");
   ui.backdrop.classList.add("show");
 };
@@ -761,6 +870,14 @@ const renderMessages = () => {
 document.getElementById("menuBtn").onclick = openSidebar;
 ui.backdrop.onclick = closeSidebar;
 document.getElementById("themeToggle").onclick = () => document.body.classList.toggle("dark");
+ui.notifyBtn.onclick = () => {
+  if (!auth.currentUser) {
+    setStatus("通知の確認はログイン後に利用できます。", "error");
+    return;
+  }
+  ui.notifyPanel.style.display = ui.notifyPanel.style.display === "block" ? "none" : "block";
+};
+document.getElementById("closeNotify").onclick = () => { ui.notifyPanel.style.display = "none"; };
 renderStampBar();
 ui.friendSearchInput.oninput = renderFriends;
 
@@ -820,13 +937,21 @@ onAuthStateChanged(auth, (user) => {
     renderMessages();
   });
 
+  onSnapshot(collection(db, "users", user.uid, "notifications"), (snap) => {
+    notifications = [];
+    snap.forEach((d) => notifications.push({ id: d.id, ...d.data() }));
+    renderNotifications();
+  });
+
   onSnapshot(doc(db, "users", user.uid), (snap) => {
     const data = snap.data() || {};
     userSettings = {
       profileImage: data.profileImage || "",
-      backgroundImage: data.backgroundImage || ""
+      backgroundImage: data.backgroundImage || "",
+      fixedName: data.fixedName || ""
     };
     applyUserSettings();
+    ensureFixedDisplayName(user);
   });
 });
 
@@ -859,6 +984,39 @@ ui.msgInput.addEventListener("keydown", (event) => {
     setStatus("編集モードを解除しました。", "info");
   }
 });
+
+document.getElementById("sendFriendRequest").onclick = async () => {
+  if (!auth.currentUser) return;
+  const targetName = (ui.friendRequestName.value || "").trim();
+  if (!targetName) {
+    setStatus("申請したい相手の表示名を入力してください。", "error");
+    return;
+  }
+
+  const q = query(collection(db, "users"), where("fixedName", "==", targetName), limit(1));
+  const result = await getDocs(q);
+  if (result.empty) {
+    setStatus("その表示名のユーザーが見つかりません。", "error");
+    return;
+  }
+
+  const targetDoc = result.docs[0];
+  if (targetDoc.id === auth.currentUser.uid) {
+    setStatus("自分自身には申請できません。", "error");
+    return;
+  }
+
+  await setDoc(doc(db, "users", targetDoc.id, "notifications", `${auth.currentUser.uid}`), {
+    fromUid: auth.currentUser.uid,
+    fromEmail: normalizeEmail(auth.currentUser.email || ""),
+    fromName: userSettings.fixedName || auth.currentUser.displayName || (auth.currentUser.email || "").split("@")[0],
+    status: "pending",
+    createdAt: serverTimestamp()
+  }, { merge: true });
+
+  ui.friendRequestName.value = "";
+  setStatus("フレンド申請を通知ボックスへ送りました。", "success");
+};
 
 document.getElementById("addFriend").onclick = async () => {
   if (!auth.currentUser) return;
