@@ -194,6 +194,8 @@ header {
 .other { background: #fff; color: var(--text-primary); margin-right: auto; border: 1px solid var(--border); border-bottom-left-radius: 4px; }
 
 .message-meta { display: block; margin-top: 6px; font-size: 0.72rem; opacity: 0.75; }
+.reply-quote { border-left: 3px solid #94a3b8; padding-left: 8px; margin: 4px 0 6px; font-size: 0.78rem; opacity: 0.9; }
+.unread-badge { display:inline-block; margin-left:6px; background:#ef4444; color:#fff; border-radius:999px; padding:1px 6px; font-size:0.66rem; }
 .chatimg { width: 100%; max-width: 190px; border-radius: 10px; margin-top: 8px; display: block; }
 
 .msg-actions {
@@ -420,7 +422,7 @@ body.dark .other { background: #1f2937; color: #f9fafb; }
     </div>
   </header>
 
-  <div id="notifyPanel"><div style="display:flex;justify-content:space-between;align-items:center;"><strong>通知ボックス</strong><button id="closeNotify">閉じる</button></div><div id="notifyList"></div></div>
+  <div id="notifyPanel"><div style="display:flex;justify-content:space-between;align-items:center;"><strong>通知ボックス</strong><button id="closeNotify">閉じる</button></div><div id="notifyList"></div><hr><strong>送信済み申請</strong><div id="sentRequestList"></div></div>
 
   <div id="auth">
     <h2 style="margin:0">ログインしてチャットを始めましょう</h2>
@@ -437,11 +439,13 @@ body.dark .other { background: #1f2937; color: #f9fafb; }
   <div id="chat">
     <div id="toolbar">
       <input id="searchInput" placeholder="メッセージ検索...">
+      <button id="retryQueueBtn" style="background:#f59e0b">再送</button>
       <small id="chatMode" style="align-self:center;white-space:nowrap">全体</small>
     </div>
     <div id="messages"></div>
     <div id="stampBar"></div>
     <div id="bottomBar">
+      <div id="replyPreview" style="display:none;padding:8px 12px;border-bottom:1px solid var(--border);"></div>
       <div id="inputArea">
         <input id="msg" placeholder="message">
         <div id="actions">
@@ -502,6 +506,8 @@ const ui = {
   notifyCount: document.getElementById("notifyCount"),
   notifyPanel: document.getElementById("notifyPanel"),
   notifyList: document.getElementById("notifyList"),
+  sentRequestList: document.getElementById("sentRequestList"),
+  replyPreview: document.getElementById("replyPreview"),
   fontSizeSlider: document.getElementById("fontSizeSlider")
 };
 
@@ -513,6 +519,9 @@ let mediaRecorder = null;
 let recordingStream = null;
 let userSettings = { profileImage: "", backgroundImage: "" };
 let notifications = [];
+let sentRequests = [];
+let replyingTo = null;
+let failedQueue = JSON.parse(localStorage.getItem("line_failed_queue") || "[]");
 
 const authErrorMessages = {
   "auth/email-already-in-use": "このメールアドレスはすでに登録されています。ログインをお試しください。",
@@ -560,6 +569,21 @@ const fileToDataUrl = (file) => new Promise((resolve) => {
   reader.readAsDataURL(file);
 });
 
+const compressImageFile = async (file, maxSize = 1280, quality = 0.82) => {
+  if (!file || !file.type.startsWith("image/") || file.type === "image/gif") return file;
+  const imgUrl = await fileToDataUrl(file);
+  const img = new Image();
+  await new Promise((resolve) => { img.onload = resolve; img.src = imgUrl; });
+  const scale = Math.min(1, maxSize / Math.max(img.width, img.height));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(img.width * scale);
+  canvas.height = Math.round(img.height * scale);
+  const ctx = canvas.getContext("2d");
+  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+  const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", quality));
+  return new File([blob], file.name.replace(/\.[^.]+$/, ".jpg"), { type: "image/jpeg" });
+};
+
 const playPopSound = () => {
   const AudioContextClass = window.AudioContext || window.webkitAudioContext;
   if (!AudioContextClass) return;
@@ -588,7 +612,7 @@ const canSendToCurrentFriend = () => {
   return true;
 };
 
-const buildMessagePayload = ({ text = "", image = null, audio = null }) => ({
+const buildMessagePayload = ({ text = "", image = null, audio = null, replyToId = null, replyToText = null, replyToName = null }) => ({
   text,
   image,
   audio,
@@ -598,17 +622,68 @@ const buildMessagePayload = ({ text = "", image = null, audio = null }) => ({
   conversationId: selectedFriendEmail ? buildConversationId(auth.currentUser.email || "", selectedFriendEmail) : null,
   uid: auth.currentUser.uid,
   createdAt: serverTimestamp(),
-  readByIds: [auth.currentUser.uid]
+  readByIds: [auth.currentUser.uid],
+  replyToId,
+  replyToText,
+  replyToName
 });
 
-const postMessage = async (payload) => {
-  await addDoc(collection(db, "messages"), buildMessagePayload(payload));
-  if (selectedFriendEmail) {
-    await setDoc(doc(db, "users", auth.currentUser.uid, "friends", friendDocId(selectedFriendEmail)), {
-      lastChattedAt: serverTimestamp()
-    }, { merge: true });
+const persistFailedQueue = () => {
+  localStorage.setItem("line_failed_queue", JSON.stringify(failedQueue.slice(-50)));
+};
+
+const enqueueFailed = (payload) => {
+  failedQueue.push({
+    id: crypto.randomUUID(),
+    payload,
+    createdAt: Date.now()
+  });
+  persistFailedQueue();
+};
+
+const postMessage = async (payload, skipQueue=false) => {
+  try {
+    await addDoc(collection(db, "messages"), buildMessagePayload(payload));
+    if (selectedFriendEmail) {
+      await setDoc(doc(db, "users", auth.currentUser.uid, "friends", friendDocId(selectedFriendEmail)), {
+        lastChattedAt: serverTimestamp()
+      }, { merge: true });
+    }
+    playPopSound();
+    return true;
+  } catch (error) {
+    if (!skipQueue) {
+      enqueueFailed(payload);
+      setStatus("送信に失敗したため再送キューに保存しました。", "error");
+    }
+    return false;
   }
-  playPopSound();
+};
+
+const retryFailedQueue = async () => {
+  if (!failedQueue.length) {
+    setStatus("再送キューは空です。", "info");
+    return;
+  }
+  const remaining = [];
+  for (const item of failedQueue) {
+    const ok = await postMessage(item.payload, true);
+    if (!ok) remaining.push(item);
+  }
+  failedQueue = remaining;
+  persistFailedQueue();
+  setStatus(remaining.length ? `再送完了（一部失敗 ${remaining.length} 件）` : "再送キューを送信しました。", remaining.length ? "error" : "success");
+};
+
+const setReplyTarget = (message) => {
+  replyingTo = message;
+  ui.replyPreview.style.display = "block";
+  ui.replyPreview.innerHTML = `返信先: <strong>${safeText(message.name || "匿名")}</strong> ${safeText((message.text || "").slice(0, 40))} <button id="cancelReply" style="background:#64748b;margin-left:8px;">×</button>`;
+  document.getElementById("cancelReply").onclick = () => {
+    replyingTo = null;
+    ui.replyPreview.style.display = "none";
+    ui.replyPreview.innerHTML = "";
+  };
 };
 
 const applyUserSettings = () => {
@@ -648,6 +723,7 @@ const renderNotifications = () => {
       accept.onclick = async () => {
         if (!auth.currentUser) return;
         await setDoc(doc(db, "users", auth.currentUser.uid, "friends", friendDocId(notice.fromEmail)), {
+          uid: notice.fromUid || null,
           email: normalizeEmail(notice.fromEmail),
           name: notice.fromName || notice.fromEmail?.split("@")[0] || "friend",
           favorite: false,
@@ -655,6 +731,7 @@ const renderNotifications = () => {
           createdAt: serverTimestamp()
         }, { merge: true });
         await setDoc(doc(db, "users", notice.fromUid, "friends", friendDocId(auth.currentUser.email || "")), {
+          uid: auth.currentUser.uid,
           email: normalizeEmail(auth.currentUser.email || ""),
           name: auth.currentUser.displayName || userSettings.fixedName || (auth.currentUser.email || "").split("@")[0],
           favorite: false,
@@ -663,13 +740,38 @@ const renderNotifications = () => {
         }, { merge: true });
         await updateDoc(doc(db, "users", auth.currentUser.uid, "notifications", notice.id), { status: "accepted", acceptedAt: serverTimestamp() });
       };
-      div.appendChild(accept);
+      const reject = document.createElement("button");
+      reject.textContent = "拒否";
+      reject.style.background = "#ef4444";
+      reject.onclick = async () => {
+        if (!auth.currentUser) return;
+        await updateDoc(doc(db, "users", auth.currentUser.uid, "notifications", notice.id), { status: "rejected", rejectedAt: serverTimestamp() });
+      };
+      div.append(accept, reject);
     } else {
       const done = document.createElement("small");
       done.textContent = "承認済み";
       div.appendChild(done);
     }
     ui.notifyList.appendChild(div);
+  });
+
+  ui.sentRequestList.innerHTML = "";
+  sentRequests.forEach((req) => {
+    const row = document.createElement("div");
+    row.className = "notify-item";
+    row.innerHTML = `<div>${safeText(req.toName || req.toUid || "unknown")} へ申請</div><small>${safeText(req.status || "pending")}</small>`;
+    if (req.status === "pending") {
+      const cancel = document.createElement("button");
+      cancel.textContent = "取り消し";
+      cancel.style.background = "#64748b";
+      cancel.onclick = async () => {
+        if (!auth.currentUser) return;
+        await updateDoc(doc(db, "users", auth.currentUser.uid, "sentRequests", req.id), { status: "canceled", canceledAt: serverTimestamp() });
+      };
+      row.appendChild(cancel);
+    }
+    ui.sentRequestList.appendChild(row);
   });
 };
 
@@ -734,13 +836,26 @@ const renderFriends = () => {
 
   const globalItem = document.createElement("li");
   globalItem.className = `friend-item ${selectedFriendEmail ? "" : "active"}`;
-  globalItem.innerHTML = `<div class="friend-row"><strong>全体チャット</strong><button style="background:#0ea5e9">選択</button></div>`;
+  const globalUnread = allMessages.filter((msg) => !msg.targetEmail && !(Array.isArray(msg.readByIds) ? msg.readByIds : []).includes(auth.currentUser?.uid || "") && msg.uid !== auth.currentUser?.uid).length;
+  globalItem.innerHTML = `<div class="friend-row"><strong>全体チャット ${globalUnread ? `<span class="unread-badge">${globalUnread}</span>` : ""}</strong><button style="background:#0ea5e9">選択</button></div>`;
   globalItem.querySelector("button").onclick = () => {
     selectedFriendEmail = "";
     renderFriends();
     renderMessages();
   };
   ui.friendList.appendChild(globalItem);
+
+  const meUid = auth.currentUser?.uid || "";
+  const friendUnread = {};
+  for (const msg of allMessages) {
+    if (!msg.targetEmail) continue;
+    const ids = Array.isArray(msg.readByIds) ? msg.readByIds : [];
+    if (ids.includes(meUid)) continue;
+    const sender = normalizeEmail(msg.senderEmail || "");
+    const target = normalizeEmail(msg.targetEmail || "");
+    const other = sender === normalizeEmail(auth.currentUser?.email || "") ? target : sender;
+    friendUnread[other] = (friendUnread[other] || 0) + 1;
+  }
 
   const sortedFriends = [...friends]
     .sort((a, b) => Number(Boolean(b.favorite)) - Number(Boolean(a.favorite)) || (toMillis(b.lastChattedAt) - toMillis(a.lastChattedAt)));
@@ -754,7 +869,8 @@ const renderFriends = () => {
       const li = document.createElement("li");
       const friendEmail = normalizeEmail(friend.email || "");
       li.className = `friend-item ${selectedFriendEmail === friendEmail ? "active" : ""}`;
-      li.innerHTML = `<div class="friend-row"><div><strong>${safeText(friend.name || "Friend")}</strong><br><small>${safeText(friendEmail || "(メール未設定)")}</small><div class="friend-badges">${friend.favorite ? "<small>お気に入り</small>" : ""}${friend.blocked ? "<small>ブロック中</small>" : ""}</div></div><div class="friend-actions"><button class="select">選択</button><button class="favorite">★</button><button class="rename">名前</button><button class="block">🚫</button><button class="delete">削除</button></div></div>`;
+      const unread = friendUnread[friendEmail] || 0;
+      li.innerHTML = `<div class="friend-row"><div><strong>${safeText(friend.name || "Friend")}</strong>${unread ? `<span class="unread-badge">${unread}</span>` : ""}<br><small>${safeText(friendEmail || "(メール未設定)")}</small><div class="friend-badges">${friend.favorite ? "<small>お気に入り</small>" : ""}${friend.blocked ? "<small>ブロック中</small>" : ""}</div></div><div class="friend-actions"><button class="select">選択</button><button class="favorite">★</button><button class="rename">名前</button><button class="block">🚫</button><button class="delete">削除</button></div></div>`;
       li.querySelector(".select").style.background = "#0ea5e9";
       li.querySelector(".select").onclick = () => {
         selectedFriendEmail = friendEmail;
@@ -850,6 +966,13 @@ const renderMessages = () => {
     div.className = "msg " + (data.uid === user.uid ? "me" : "other") + (isStampOnly ? " stamp-only" : "");
     div.textContent = data.text || "";
 
+    if (data.replyToText) {
+      const quote = document.createElement("div");
+      quote.className = "reply-quote";
+      quote.textContent = `↪ ${data.replyToName || "匿名"}: ${data.replyToText}`;
+      div.prepend(quote);
+    }
+
     if (data.image) {
       const img = document.createElement("img");
       img.src = data.image;
@@ -870,7 +993,8 @@ const renderMessages = () => {
     meta.className = "message-meta";
     const readIds = Array.isArray(data.readByIds) ? data.readByIds : [];
     const readCount = Math.max(readIds.length - 1, 0);
-    meta.textContent = `${data.name || "匿名"}・${formatTime(data.createdAt)}${data.editedAt ? " (編集済み)" : ""}${data.uid === user.uid ? ` ・既読${readCount}` : ""}`;
+    const readDetail = data.uid === user.uid && readCount ? ` ・既読(${readCount}) ${readIds.slice(0,3).join(",")}` : "";
+    meta.textContent = `${data.name || "匿名"}・${formatTime(data.createdAt)}${data.editedAt ? " (編集済み)" : ""}${readDetail}`;
     div.appendChild(meta);
 
     if (data.uid === user.uid && data.id) {
@@ -881,6 +1005,11 @@ const renderMessages = () => {
       editBtn.className = "msg-edit";
       editBtn.textContent = "編集";
       editBtn.onclick = () => startEditMessage(data);
+
+      const replyBtn = document.createElement("button");
+      replyBtn.className = "msg-edit";
+      replyBtn.textContent = "返信";
+      replyBtn.onclick = () => setReplyTarget(data);
 
       const deleteBtn = document.createElement("button");
       deleteBtn.className = "msg-delete";
@@ -894,7 +1023,7 @@ const renderMessages = () => {
         }
       };
 
-      actionWrap.append(editBtn, deleteBtn);
+      actionWrap.append(editBtn, replyBtn, deleteBtn);
       div.appendChild(actionWrap);
     }
 
@@ -918,6 +1047,7 @@ ui.notifyBtn.onclick = () => {
 document.getElementById("closeNotify").onclick = () => { ui.notifyPanel.style.display = "none"; };
 renderStampBar();
 ui.friendSearchInput.oninput = renderFriends;
+document.getElementById("retryQueueBtn").onclick = retryFailedQueue;
 
 ui.fontSizeSlider.oninput = (event) => {
   document.documentElement.style.setProperty("--msg-font-size", `${event.target.value}px`);
@@ -981,6 +1111,12 @@ onAuthStateChanged(auth, (user) => {
     renderNotifications();
   });
 
+  onSnapshot(collection(db, "users", user.uid, "sentRequests"), (snap) => {
+    sentRequests = [];
+    snap.forEach((d) => sentRequests.push({ id: d.id, ...d.data() }));
+    renderNotifications();
+  });
+
   onSnapshot(doc(db, "users", user.uid), (snap) => {
     const data = snap.data() || {};
     userSettings = {
@@ -997,7 +1133,8 @@ ui.searchInput.oninput = renderMessages;
 
 ui.profileImageInput.onchange = async () => {
   if (!auth.currentUser || !ui.profileImageInput.files[0]) return;
-  const dataUrl = await fileToDataUrl(ui.profileImageInput.files[0]);
+  const compressed = await compressImageFile(ui.profileImageInput.files[0]);
+  const dataUrl = await fileToDataUrl(compressed);
   await setDoc(doc(db, "users", auth.currentUser.uid), { profileImage: dataUrl }, { merge: true });
   setStatus("プロフィール画像を更新しました。", "success");
   ui.profileImageInput.value = "";
@@ -1005,7 +1142,8 @@ ui.profileImageInput.onchange = async () => {
 
 ui.backgroundImageInput.onchange = async () => {
   if (!auth.currentUser || !ui.backgroundImageInput.files[0]) return;
-  const dataUrl = await fileToDataUrl(ui.backgroundImageInput.files[0]);
+  const compressed = await compressImageFile(ui.backgroundImageInput.files[0]);
+  const dataUrl = await fileToDataUrl(compressed);
   await setDoc(doc(db, "users", auth.currentUser.uid), { backgroundImage: dataUrl }, { merge: true });
   setStatus("背景画像を更新しました。", "success");
   ui.backgroundImageInput.value = "";
@@ -1048,6 +1186,13 @@ document.getElementById("sendFriendRequest").onclick = async () => {
     fromUid: auth.currentUser.uid,
     fromEmail: normalizeEmail(auth.currentUser.email || ""),
     fromName: userSettings.fixedName || auth.currentUser.displayName || (auth.currentUser.email || "").split("@")[0],
+    status: "pending",
+    createdAt: serverTimestamp()
+  }, { merge: true });
+
+  await setDoc(doc(db, "users", auth.currentUser.uid, "sentRequests", `${targetDoc.id}`), {
+    toUid: targetDoc.id,
+    toName: targetName,
     status: "pending",
     createdAt: serverTimestamp()
   }, { merge: true });
@@ -1145,11 +1290,22 @@ document.getElementById("send").onclick = async () => {
   const file = ui.imageInput.files[0];
 
   if (file) {
-    imageBase64 = await fileToDataUrl(file);
+    const compressed = await compressImageFile(file);
+    imageBase64 = await fileToDataUrl(compressed);
   }
 
-  await postMessage({ text, image: imageBase64, audio: null });
+  await postMessage({
+    text,
+    image: imageBase64,
+    audio: null,
+    replyToId: replyingTo?.id || null,
+    replyToText: replyingTo?.text ? replyingTo.text.slice(0, 80) : null,
+    replyToName: replyingTo?.name || null
+  });
 
+  replyingTo = null;
+  ui.replyPreview.style.display = "none";
+  ui.replyPreview.innerHTML = "";
   ui.msgInput.value = "";
   ui.imageInput.value = "";
 };
