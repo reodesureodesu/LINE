@@ -204,7 +204,8 @@ header {
 
 
 #inputArea { display: grid; grid-template-columns: 1fr auto; gap: 8px; padding: 12px; background: var(--surface); }
-#imageInput { grid-column: 1 / -1; }
+#imageInput,
+#audioInput { grid-column: 1 / -1; }
 #actions { display: flex; gap: 8px; }
 
 input, button { font: inherit; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--border); }
@@ -234,6 +235,7 @@ body.dark .other { background: #1f2937; color: #f9fafb; }
     <h3 style="margin:4px 0">フレンド</h3>
     <div>
       <input id="friendEmail" placeholder="friend@example.com">
+      <input id="friendName" placeholder="フレンド表示名（任意）" style="margin-top:8px">
       <button id="addFriend" style="margin-top:8px;width:100%">フレンド追加</button>
     </div>
     <ul id="friendList"></ul>
@@ -275,6 +277,7 @@ body.dark .other { background: #1f2937; color: #f9fafb; }
           <button id="aiBtn">AI</button>
         </div>
         <input type="file" id="imageInput" accept="image/*">
+        <input type="file" id="audioInput" accept="audio/*">
       </div>
       <button id="logout">ログアウト</button>
     </div>
@@ -310,11 +313,13 @@ const ui = {
   displayNameInput: document.getElementById("displayName"),
   msgInput: document.getElementById("msg"),
   imageInput: document.getElementById("imageInput"),
+  audioInput: document.getElementById("audioInput"),
   searchInput: document.getElementById("searchInput"),
   chatMode: document.getElementById("chatMode"),
   sidebar: document.getElementById("sidebar"),
   backdrop: document.getElementById("backdrop"),
   friendEmail: document.getElementById("friendEmail"),
+  friendName: document.getElementById("friendName"),
   friendList: document.getElementById("friendList"),
   fontSizeSlider: document.getElementById("fontSizeSlider")
 };
@@ -385,13 +390,24 @@ const renderFriends = () => {
   friends.forEach((friend) => {
     const li = document.createElement("li");
     li.className = `friend-item ${selectedFriendEmail === friend.email ? "active" : ""}`;
-    li.innerHTML = `<div class="friend-row"><div><strong>${safeText(friend.name || "Friend")}</strong><br><small>${safeText(friend.email)}</small></div><div><button class="select">選択</button><button class="delete">削除</button></div></div>`;
+    li.innerHTML = `<div class="friend-row"><div><strong>${safeText(friend.name || "Friend")}</strong><br><small>${safeText(friend.email)}</small></div><div><button class="select">選択</button><button class="rename">名前</button><button class="delete">削除</button></div></div>`;
     li.querySelector(".select").style.background = "#0ea5e9";
     li.querySelector(".select").onclick = () => {
       selectedFriendEmail = friend.email;
       renderFriends();
       renderMessages();
       closeSidebar();
+    };
+    li.querySelector(".rename").style.background = "#6366f1";
+    li.querySelector(".rename").onclick = async () => {
+      if (!auth.currentUser) return;
+      const nextName = prompt("フレンド表示名を入力してください", friend.name || "");
+      if (nextName === null) return;
+      await setDoc(doc(db, "users", auth.currentUser.uid, "friends", friendDocId(friend.email)), {
+        email: friend.email,
+        name: nextName.trim() || friend.email.split("@")[0],
+        updatedAt: serverTimestamp()
+      }, { merge: true });
     };
     li.querySelector(".delete").onclick = async () => {
       if (!auth.currentUser) return;
@@ -449,6 +465,15 @@ const renderMessages = () => {
       img.src = data.image;
       img.className = "chatimg";
       div.appendChild(img);
+    }
+
+    if (data.audio) {
+      const audio = document.createElement("audio");
+      audio.src = data.audio;
+      audio.controls = true;
+      audio.style.marginTop = "8px";
+      audio.style.width = "100%";
+      div.appendChild(audio);
     }
 
     const meta = document.createElement("small");
@@ -572,11 +597,12 @@ document.getElementById("addFriend").onclick = async () => {
 
   await setDoc(doc(db, "users", auth.currentUser.uid, "friends", friendDocId(email)), {
     email,
-    name: email.split("@")[0],
+    name: (ui.friendName.value || "").trim() || email.split("@")[0],
     createdAt: serverTimestamp()
-  });
+  }, { merge: true });
 
   ui.friendEmail.value = "";
+  ui.friendName.value = "";
   setStatus("フレンドを追加しました。", "success");
 };
 
@@ -596,14 +622,17 @@ document.getElementById("send").onclick = async () => {
     cancelEditMode();
     ui.msgInput.value = "";
     ui.imageInput.value = "";
+    ui.audioInput.value = "";
     setStatus("メッセージを更新しました。", "success");
     return;
   }
 
-  if (!text && !ui.imageInput.files[0]) return;
+  if (!text && !ui.imageInput.files[0] && !ui.audioInput.files[0]) return;
 
   let imageBase64 = null;
+  let audioBase64 = null;
   const file = ui.imageInput.files[0];
+  const audioFile = ui.audioInput.files[0];
 
   if (file) {
     imageBase64 = await new Promise((resolve) => {
@@ -613,9 +642,18 @@ document.getElementById("send").onclick = async () => {
     });
   }
 
+  if (audioFile) {
+    audioBase64 = await new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.readAsDataURL(audioFile);
+    });
+  }
+
   await addDoc(collection(db, "messages"), {
     text,
     image: imageBase64,
+    audio: audioBase64,
     name: auth.currentUser.displayName || (auth.currentUser.email || "匿名"),
     senderEmail: auth.currentUser.email || "",
     targetEmail: selectedFriendEmail || null,
@@ -625,6 +663,7 @@ document.getElementById("send").onclick = async () => {
 
   ui.msgInput.value = "";
   ui.imageInput.value = "";
+  ui.audioInput.value = "";
 };
 
 document.getElementById("aiBtn").onclick = async () => {
