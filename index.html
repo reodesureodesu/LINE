@@ -255,6 +255,12 @@ header {
   border: none;
   box-shadow: none;
   padding: 4px 8px;
+  width: fit-content;
+  max-width: 100%;
+}
+
+.msg.stamp-only.me {
+  color: #111827;
 }
 
 .msg.stamp-only .message-meta {
@@ -824,8 +830,9 @@ const markMessagesAsRead = async (messages, user) => {
     if (ids.includes(user.uid)) continue;
     try {
       await updateDoc(doc(db, "messages", msg.id), { readByIds: arrayUnion(user.uid) });
-    } catch (_error) {
-      // 読み取り専用時などは無視
+      msg.readByIds = [...ids, user.uid];
+    } catch (error) {
+      console.warn("read receipt update failed", error);
     }
   }
 };
@@ -951,6 +958,7 @@ const renderMessages = () => {
   const user = auth.currentUser;
   if (!user) return;
 
+  const wasNearBottom = ui.messagesDiv.scrollHeight - ui.messagesDiv.scrollTop - ui.messagesDiv.clientHeight < 90;
   ui.messagesDiv.innerHTML = "";
   if (selectedFriendEmail) {
     const friend = friends.find((item) => normalizeEmail(item.email) === normalizeEmail(selectedFriendEmail));
@@ -1030,8 +1038,10 @@ const renderMessages = () => {
     ui.messagesDiv.appendChild(div);
   });
 
-  ui.messagesDiv.scrollTop = ui.messagesDiv.scrollHeight;
-  markMessagesAsRead(visibleMessages, user);
+  if (wasNearBottom) {
+    ui.messagesDiv.scrollTop = ui.messagesDiv.scrollHeight;
+  }
+  markMessagesAsRead(visibleMessages, user).then(() => renderFriends());
 };
 
 document.getElementById("menuBtn").onclick = openSidebar;
