@@ -1340,5 +1340,9 @@ document.getElementById("aiBtn").onclick = async () => {
   ui.msgInput.value = data.choices?.[0]?.message?.content || "AI応答を取得できませんでした";
 };
 </script>
+<script>
+  window.si = window.si || function () { (window.siq = window.siq || []).push(arguments); };
+</script>
+<script defer src="/_vercel/speed-insights/script.js"></script>
 </body>
 </html>
