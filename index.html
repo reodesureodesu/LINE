@@ -843,7 +843,7 @@ const renderFriends = () => {
 
   const globalItem = document.createElement("li");
   globalItem.className = `friend-item ${selectedFriendEmail ? "" : "active"}`;
-  const globalUnread = allMessages.filter((msg) => !msg.targetEmail && !(Array.isArray(msg.readByIds) ? msg.readByIds : []).includes(auth.currentUser?.uid || "") && msg.uid !== auth.currentUser?.uid).length;
+  const globalUnread = allMessages.filter((msg) => !normalizeEmail(msg.targetEmail || "") && msg.uid !== (auth.currentUser?.uid || "") && !(Array.isArray(msg.readByIds) ? msg.readByIds : []).includes(auth.currentUser?.uid || "")).length;
   globalItem.innerHTML = `<div class="friend-row"><strong>全体チャット ${globalUnread ? `<span class="unread-badge">${globalUnread}</span>` : ""}</strong><button style="background:#0ea5e9">選択</button></div>`;
   globalItem.querySelector("button").onclick = () => {
     selectedFriendEmail = "";
@@ -853,15 +853,17 @@ const renderFriends = () => {
   ui.friendList.appendChild(globalItem);
 
   const meUid = auth.currentUser?.uid || "";
+  const meEmail = normalizeEmail(auth.currentUser?.email || "");
   const friendUnread = {};
   for (const msg of allMessages) {
-    if (!msg.targetEmail) continue;
+    const target = normalizeEmail(msg.targetEmail || "");
+    const sender = normalizeEmail(msg.senderEmail || "");
+    if (!target) continue;
+    if (target !== meEmail) continue;
+    if (msg.uid === meUid) continue;
     const ids = Array.isArray(msg.readByIds) ? msg.readByIds : [];
     if (ids.includes(meUid)) continue;
-    const sender = normalizeEmail(msg.senderEmail || "");
-    const target = normalizeEmail(msg.targetEmail || "");
-    const other = sender === normalizeEmail(auth.currentUser?.email || "") ? target : sender;
-    friendUnread[other] = (friendUnread[other] || 0) + 1;
+    friendUnread[sender] = (friendUnread[sender] || 0) + 1;
   }
 
   const sortedFriends = [...friends]
@@ -920,10 +922,10 @@ const renderFriends = () => {
     });
 };
 
-const filteredMessages = () => {
+const filteredMessages = (applyKeyword = true) => {
   if (!auth.currentUser) return [];
   const me = normalizeEmail(auth.currentUser.email || "");
-  const keyword = ui.searchInput.value.trim().toLowerCase();
+  const keyword = applyKeyword ? ui.searchInput.value.trim().toLowerCase() : "";
 
   return allMessages
     .filter((msg) => {
@@ -967,7 +969,8 @@ const renderMessages = () => {
     ui.chatMode.textContent = "全体";
   }
 
-  const visibleMessages = filteredMessages();
+  const visibleMessages = filteredMessages(true);
+  const readTargetMessages = filteredMessages(false);
   visibleMessages.forEach((data) => {
     const div = document.createElement("div");
     const isStampOnly = !!(data.text && STAMPS.includes((data.text || "").trim()) && !data.image && !data.audio);
@@ -1041,7 +1044,7 @@ const renderMessages = () => {
   if (wasNearBottom) {
     ui.messagesDiv.scrollTop = ui.messagesDiv.scrollHeight;
   }
-  markMessagesAsRead(visibleMessages, user).then(() => renderFriends());
+  markMessagesAsRead(readTargetMessages, user).then(() => renderFriends());
 };
 
 document.getElementById("menuBtn").onclick = openSidebar;
