@@ -7,7 +7,6 @@
 <style>
 :root {
   --line-green: #06c755;
-  --line-green-dark: #05ad4a;
   --bg-gradient: linear-gradient(160deg, #d8f9e8 0%, #e6f0ff 55%, #f3ecff 100%);
   --surface: #ffffff;
   --surface-soft: #f6f8fb;
@@ -15,11 +14,10 @@
   --text-muted: #6b7280;
   --border: #e5e7eb;
   --shadow: 0 16px 40px rgba(16, 24, 40, 0.14);
+  --msg-font-size: 18px;
 }
 
-* {
-  box-sizing: border-box;
-}
+* { box-sizing: border-box; }
 
 body {
   margin: 0;
@@ -34,6 +32,7 @@ body {
 }
 
 #app {
+  position: relative;
   width: min(100%, 420px);
   height: min(92vh, 760px);
   background: var(--surface);
@@ -42,29 +41,96 @@ body {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.8);
 }
 
 header {
   background: linear-gradient(120deg, var(--line-green) 0%, #2cd56e 100%);
   color: white;
-  padding: 20px;
-  text-align: center;
-  font-weight: 700;
-  letter-spacing: 0.03em;
-  font-size: 1.05rem;
+  padding: 14px 12px;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 8px;
+  align-items: center;
+}
+
+#menuBtn, #themeToggle {
+  border-radius: 10px;
+  padding: 9px 10px;
+}
+
+#menuBtn { background: rgba(255,255,255,.24); }
+#themeToggle { background: #111827; }
+
+#sidebar {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: min(80%, 300px);
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  transform: translateX(-100%);
+  transition: transform 0.2s ease;
+  z-index: 9;
+  display: grid;
+  grid-template-rows: auto auto 1fr auto;
+  gap: 10px;
+  padding: 14px;
+}
+
+#sidebar.open { transform: translateX(0); }
+
+#backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(15,23,42,.35);
+  z-index: 8;
+  display: none;
+}
+
+#backdrop.show { display: block; }
+
+#friendList {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  overflow: auto;
+  display: grid;
+  gap: 8px;
+}
+
+.friend-item {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 8px;
+  background: var(--surface-soft);
+}
+
+.friend-item.active {
+  border-color: var(--line-green);
+  box-shadow: 0 0 0 2px rgba(6,199,85,0.2);
+}
+
+.friend-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.friend-row button {
+  padding: 4px 8px;
+  border-radius: 8px;
+  font-size: 0.75rem;
+  background: #ef4444;
 }
 
 #auth {
-  padding: 28px 22px;
+  padding: 24px 20px;
   text-align: center;
   display: grid;
-  gap: 12px;
-  background: linear-gradient(180deg, #ffffff 0%, #fbfffd 100%);
+  gap: 10px;
 }
 
 #statusBar {
-  min-height: 38px;
+  min-height: 36px;
   padding: 9px 12px;
   font-size: 0.85rem;
   border-radius: 10px;
@@ -73,34 +139,10 @@ header {
   display: none;
   text-align: left;
 }
+#statusBar.error { background: #fef2f2; color: #b91c1c; }
+#statusBar.success { background: #ecfdf5; color: #047857; }
 
-#statusBar.error {
-  background: #fef2f2;
-  color: #b91c1c;
-}
-
-#statusBar.success {
-  background: #ecfdf5;
-  color: #047857;
-}
-
-#auth h2 {
-  margin: 0 0 2px;
-  font-size: 1.1rem;
-}
-
-#auth p {
-  margin: 0 0 12px;
-  color: var(--text-muted);
-  font-size: 0.92rem;
-}
-
-#chat {
-  display: none;
-  flex: 1;
-  flex-direction: column;
-  background: linear-gradient(180deg, #f8fcff 0%, #f2fbf6 100%);
-}
+#chat { display: none; flex: 1; flex-direction: column; background: linear-gradient(180deg, #f8fcff 0%, #f2fbf6 100%); }
 
 #toolbar {
   display: flex;
@@ -108,21 +150,6 @@ header {
   padding: 10px 12px;
   border-bottom: 1px solid var(--border);
   background: #fff;
-}
-
-#toolbar input {
-  padding: 8px 10px;
-}
-
-.message-meta {
-  display: block;
-  margin-top: 6px;
-  font-size: 0.72rem;
-  opacity: 0.75;
-}
-
-.hidden {
-  display: none !important;
 }
 
 #messages {
@@ -141,104 +168,26 @@ header {
   max-width: 78%;
   word-break: break-word;
   line-height: 1.4;
+  font-size: var(--msg-font-size);
   box-shadow: 0 6px 14px rgba(15, 23, 42, 0.08);
 }
 
-.me {
-  background: var(--line-green);
-  color: white;
-  margin-left: auto;
-  border-bottom-right-radius: 4px;
-}
+.me { background: var(--line-green); color: white; margin-left: auto; border-bottom-right-radius: 4px; }
+.other { background: #fff; color: var(--text-primary); margin-right: auto; border: 1px solid var(--border); border-bottom-left-radius: 4px; }
 
-.other {
-  background: #ffffff;
-  color: var(--text-primary);
-  margin-right: auto;
-  border: 1px solid var(--border);
-  border-bottom-left-radius: 4px;
-}
+.message-meta { display: block; margin-top: 6px; font-size: 0.72rem; opacity: 0.75; }
+.chatimg { width: 100%; max-width: 190px; border-radius: 10px; margin-top: 8px; display: block; }
 
-.chatimg {
-  width: 100%;
-  max-width: 190px;
-  border-radius: 10px;
-  margin-top: 8px;
-  display: block;
-}
+#inputArea { display: grid; grid-template-columns: 1fr auto; gap: 8px; padding: 12px; border-top: 1px solid var(--border); background: var(--surface); }
+#imageInput { grid-column: 1 / -1; }
+#actions { display: flex; gap: 8px; }
 
-#inputArea {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 8px;
-  padding: 12px;
-  border-top: 1px solid var(--border);
-  background: var(--surface);
-}
-
-#imageInput {
-  grid-column: 1 / -1;
-}
-
-#actions {
-  display: flex;
-  gap: 8px;
-}
-
-input,
-button {
-  font: inherit;
-  padding: 10px 12px;
-  border-radius: 12px;
-  border: 1px solid var(--border);
-}
-
-input {
-  width: 100%;
-  background: var(--surface-soft);
-}
-
-input:focus {
-  outline: 2px solid rgba(6, 199, 85, 0.25);
-  border-color: var(--line-green);
-}
-
-button {
-  background: var(--line-green);
-  color: white;
-  border: none;
-  cursor: pointer;
-  font-weight: 600;
-  transition: transform 0.12s ease, opacity 0.12s ease, background 0.2s ease;
-}
-
-button:hover {
-  transform: translateY(-1px);
-  opacity: 0.96;
-}
-
-button:active {
-  transform: translateY(0);
-}
-
-#googleLogin {
-  background: #ffffff;
-  color: #111827;
-  border: 1px solid #d1d5db;
-}
-
-#logout {
-  margin: 0 12px 12px;
-  background: #ef4444;
-}
-
-#aiBtn {
-  background: #6366f1;
-}
-
-#themeToggle {
-  background: #111827;
-}
+input, button { font: inherit; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--border); }
+input { width: 100%; background: var(--surface-soft); }
+button { background: var(--line-green); color: white; border: none; cursor: pointer; font-weight: 600; }
+#googleLogin { background: #fff; color: #111827; border: 1px solid #d1d5db; }
+#logout { margin: 0 12px 12px; background: #ef4444; }
+#aiBtn { background: #6366f1; }
 
 body.dark {
   --bg-gradient: linear-gradient(160deg, #0f172a 0%, #111827 60%, #1f2937 100%);
@@ -248,63 +197,67 @@ body.dark {
   --text-muted: #9ca3af;
   --border: #374151;
 }
-
-body.dark #googleLogin,
-body.dark #toolbar,
-body.dark #inputArea {
-  background: #1f2937;
-  color: #f9fafb;
-}
-
-body.dark .other {
-  background: #1f2937;
-  color: #f9fafb;
-}
+body.dark #toolbar, body.dark #inputArea, body.dark #googleLogin { background: #1f2937; color: #f9fafb; }
+body.dark .other { background: #1f2937; color: #f9fafb; }
 </style>
 </head>
 <body>
 <div id="app">
-<header>LINE Ultimate</header>
+  <div id="backdrop"></div>
 
-<div id="auth">
-  <h2>ログインしてチャットを始めましょう</h2>
-  <p>Google またはメールアドレスでサインインできます。</p>
-  <div id="statusBar"></div>
-  <button id="googleLogin">Googleログイン</button>
-  <input id="email" placeholder="email" autocomplete="email">
-  <input id="password" type="password" placeholder="password" autocomplete="current-password">
-  <input id="displayName" placeholder="表示名（任意）" autocomplete="nickname">
-  <button id="register">新規登録</button>
-  <button id="login">ログイン</button>
-</div>
-
-<div id="chat">
-  <div id="toolbar">
-    <input id="searchInput" placeholder="メッセージ検索...">
-    <button id="themeToggle">テーマ</button>
-  </div>
-  <div id="messages"></div>
-  <div id="inputArea">
-    <input id="msg" placeholder="message">
-    <div id="actions">
-      <button id="send">送信</button>
-      <button id="aiBtn">AI</button>
+  <aside id="sidebar">
+    <h3 style="margin:4px 0">フレンド</h3>
+    <div>
+      <input id="friendEmail" placeholder="friend@example.com">
+      <button id="addFriend" style="margin-top:8px;width:100%">フレンド追加</button>
     </div>
-    <input type="file" id="imageInput" accept="image/*">
+    <ul id="friendList"></ul>
+    <div>
+      <label for="fontSizeSlider">文字サイズスライドバー</label>
+      <input id="fontSizeSlider" type="range" min="14" max="24" value="18">
+    </div>
+  </aside>
+
+  <header>
+    <button id="menuBtn">☰</button>
+    <strong style="text-align:center;letter-spacing:.02em">LINE Ultimate</strong>
+    <button id="themeToggle">テーマ</button>
+  </header>
+
+  <div id="auth">
+    <h2 style="margin:0">ログインしてチャットを始めましょう</h2>
+    <p style="margin:0;color:var(--text-muted)">Google またはメールアドレスでサインインできます。</p>
+    <div id="statusBar"></div>
+    <button id="googleLogin">Googleログイン</button>
+    <input id="email" placeholder="email" autocomplete="email">
+    <input id="password" type="password" placeholder="password" autocomplete="current-password">
+    <input id="displayName" placeholder="表示名（任意）" autocomplete="nickname">
+    <button id="register">新規登録</button>
+    <button id="login">ログイン</button>
   </div>
-  <button id="logout">ログアウト</button>
-</div>
+
+  <div id="chat">
+    <div id="toolbar">
+      <input id="searchInput" placeholder="メッセージ検索...">
+      <small id="chatMode" style="align-self:center;white-space:nowrap">全体</small>
+    </div>
+    <div id="messages"></div>
+    <div id="inputArea">
+      <input id="msg" placeholder="message">
+      <div id="actions">
+        <button id="send">送信</button>
+        <button id="aiBtn">AI</button>
+      </div>
+      <input type="file" id="imageInput" accept="image/*">
+    </div>
+    <button id="logout">ログアウト</button>
+  </div>
 </div>
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getAuth, GoogleAuthProvider, signInWithPopup,
-createUserWithEmailAndPassword, signInWithEmailAndPassword,
-onAuthStateChanged, signOut, updateProfile }
-from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-import { getFirestore, collection, addDoc, onSnapshot,
-query, orderBy, serverTimestamp }
-from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import { getAuth, GoogleAuthProvider, signInWithPopup, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, signOut, updateProfile } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+import { getFirestore, collection, addDoc, onSnapshot, query, orderBy, serverTimestamp, doc, setDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyDNUzhTrnAAUJye82vNZEy0Sgnj7e8IR9E",
@@ -315,24 +268,33 @@ const firebaseConfig = {
   appId: "1:35972275719:web:383fd1ac8a47ceca96d4a2"
 };
 
-const GEMMA_KEY = "AIzaSyDY0Jcd-72QPZlfOJAtUCYxeRrjHBvJRtQ";
-
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
-
 const googleProvider = new GoogleAuthProvider();
 
-const authDiv = document.getElementById("auth");
-const chatDiv = document.getElementById("chat");
-const messagesDiv = document.getElementById("messages");
-const msgInput = document.getElementById("msg");
-const imageInput = document.getElementById("imageInput");
-const emailInput = document.getElementById("email");
-const passwordInput = document.getElementById("password");
-const displayNameInput = document.getElementById("displayName");
-const statusBar = document.getElementById("statusBar");
-const searchInput = document.getElementById("searchInput");
+const ui = {
+  authDiv: document.getElementById("auth"),
+  chatDiv: document.getElementById("chat"),
+  messagesDiv: document.getElementById("messages"),
+  statusBar: document.getElementById("statusBar"),
+  emailInput: document.getElementById("email"),
+  passwordInput: document.getElementById("password"),
+  displayNameInput: document.getElementById("displayName"),
+  msgInput: document.getElementById("msg"),
+  imageInput: document.getElementById("imageInput"),
+  searchInput: document.getElementById("searchInput"),
+  chatMode: document.getElementById("chatMode"),
+  sidebar: document.getElementById("sidebar"),
+  backdrop: document.getElementById("backdrop"),
+  friendEmail: document.getElementById("friendEmail"),
+  friendList: document.getElementById("friendList"),
+  fontSizeSlider: document.getElementById("fontSizeSlider")
+};
+
+let allMessages = [];
+let friends = [];
+let selectedFriendEmail = "";
 
 const authErrorMessages = {
   "auth/email-already-in-use": "このメールアドレスはすでに登録されています。ログインをお試しください。",
@@ -343,179 +305,256 @@ const authErrorMessages = {
   "auth/popup-closed-by-user": "Googleログインがキャンセルされました。"
 };
 
-let allMessages = [];
+const friendDocId = (email) => encodeURIComponent(email.trim().toLowerCase());
+const safeText = (value="") => value.replace(/[<>]/g, "");
 
-const formatTime = (value)=> {
-  const date = value?.toDate ? value.toDate() : null;
-  if(!date) return "送信中...";
-  return date.toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" });
-};
-
-const setStatus = (message, type="info")=>{
-  if(!message){
-    statusBar.style.display = "none";
-    statusBar.textContent = "";
-    statusBar.className = "";
+const setStatus = (message, type="info") => {
+  if (!message) {
+    ui.statusBar.style.display = "none";
+    ui.statusBar.textContent = "";
+    ui.statusBar.className = "";
     return;
   }
-  statusBar.textContent = message;
-  statusBar.style.display = "block";
-  statusBar.className = type;
+  ui.statusBar.style.display = "block";
+  ui.statusBar.textContent = message;
+  ui.statusBar.className = type;
 };
 
-const showAuthError = (error)=>{
+const showAuthError = (error) => {
   const msg = authErrorMessages[error.code] || `認証エラーが発生しました (${error.code || "unknown"})`;
   setStatus(msg, "error");
 };
 
-const renderMessages = (messages, user)=>{
-  const keyword = searchInput.value.trim().toLowerCase();
-  messagesDiv.innerHTML = "";
-
-  messages
-    .filter((item)=>!keyword || (item.text || "").toLowerCase().includes(keyword))
-    .forEach((data)=>{
-      const div=document.createElement("div");
-      div.className="msg "+(data.uid===user.uid?"me":"other");
-      div.textContent=data.text||"";
-
-      if(data.image){
-        const img=document.createElement("img");
-        img.src=data.image;
-        img.className="chatimg";
-        div.appendChild(img);
-      }
-
-      const meta = document.createElement("small");
-      meta.className = "message-meta";
-      meta.textContent = `${data.name || "匿名"}・${formatTime(data.createdAt)}`;
-      div.appendChild(meta);
-
-      messagesDiv.appendChild(div);
-    });
-
-  messagesDiv.scrollTop=messagesDiv.scrollHeight;
+const formatTime = (value) => {
+  const date = value?.toDate ? value.toDate() : null;
+  if (!date) return "送信中...";
+  return date.toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" });
 };
 
-/* ログイン */
-document.getElementById("googleLogin").onclick =
-()=> signInWithPopup(auth,googleProvider)
-  .then(()=>setStatus("Googleでログインしました。", "success"))
+const openSidebar = () => {
+  ui.sidebar.classList.add("open");
+  ui.backdrop.classList.add("show");
+};
+
+const closeSidebar = () => {
+  ui.sidebar.classList.remove("open");
+  ui.backdrop.classList.remove("show");
+};
+
+const renderFriends = () => {
+  ui.friendList.innerHTML = "";
+
+  const globalItem = document.createElement("li");
+  globalItem.className = `friend-item ${selectedFriendEmail ? "" : "active"}`;
+  globalItem.innerHTML = `<div class="friend-row"><strong>全体チャット</strong><button style="background:#0ea5e9">選択</button></div>`;
+  globalItem.querySelector("button").onclick = () => {
+    selectedFriendEmail = "";
+    renderFriends();
+    renderMessages();
+  };
+  ui.friendList.appendChild(globalItem);
+
+  friends.forEach((friend) => {
+    const li = document.createElement("li");
+    li.className = `friend-item ${selectedFriendEmail === friend.email ? "active" : ""}`;
+    li.innerHTML = `<div class="friend-row"><div><strong>${safeText(friend.name || "Friend")}</strong><br><small>${safeText(friend.email)}</small></div><div><button class="select">選択</button><button class="delete">削除</button></div></div>`;
+    li.querySelector(".select").style.background = "#0ea5e9";
+    li.querySelector(".select").onclick = () => {
+      selectedFriendEmail = friend.email;
+      renderFriends();
+      renderMessages();
+      closeSidebar();
+    };
+    li.querySelector(".delete").onclick = async () => {
+      if (!auth.currentUser) return;
+      await deleteDoc(doc(db, "users", auth.currentUser.uid, "friends", friendDocId(friend.email)));
+    };
+    ui.friendList.appendChild(li);
+  });
+};
+
+const filteredMessages = () => {
+  if (!auth.currentUser) return [];
+  const me = auth.currentUser.email || "";
+  const keyword = ui.searchInput.value.trim().toLowerCase();
+
+  return allMessages
+    .filter((msg) => {
+      if (selectedFriendEmail) {
+        const isDm = (msg.senderEmail === me && msg.targetEmail === selectedFriendEmail) || (msg.senderEmail === selectedFriendEmail && msg.targetEmail === me);
+        return isDm;
+      }
+      const isPublic = !msg.targetEmail;
+      return isPublic;
+    })
+    .filter((msg) => !keyword || (msg.text || "").toLowerCase().includes(keyword));
+};
+
+const renderMessages = () => {
+  const user = auth.currentUser;
+  if (!user) return;
+
+  ui.messagesDiv.innerHTML = "";
+  ui.chatMode.textContent = selectedFriendEmail ? `1:1 ${selectedFriendEmail}` : "全体";
+
+  filteredMessages().forEach((data) => {
+    const div = document.createElement("div");
+    div.className = "msg " + (data.uid === user.uid ? "me" : "other");
+    div.textContent = data.text || "";
+
+    if (data.image) {
+      const img = document.createElement("img");
+      img.src = data.image;
+      img.className = "chatimg";
+      div.appendChild(img);
+    }
+
+    const meta = document.createElement("small");
+    meta.className = "message-meta";
+    meta.textContent = `${data.name || "匿名"}・${formatTime(data.createdAt)}`;
+    div.appendChild(meta);
+
+    ui.messagesDiv.appendChild(div);
+  });
+
+  ui.messagesDiv.scrollTop = ui.messagesDiv.scrollHeight;
+};
+
+document.getElementById("menuBtn").onclick = openSidebar;
+ui.backdrop.onclick = closeSidebar;
+document.getElementById("themeToggle").onclick = () => document.body.classList.toggle("dark");
+
+ui.fontSizeSlider.oninput = (event) => {
+  document.documentElement.style.setProperty("--msg-font-size", `${event.target.value}px`);
+};
+
+document.getElementById("googleLogin").onclick = () => signInWithPopup(auth, googleProvider)
+  .then(() => setStatus("Googleでログインしました。", "success"))
   .catch(showAuthError);
 
-document.getElementById("register").onclick = async()=>{
-  try{
+document.getElementById("register").onclick = async () => {
+  try {
     setStatus("");
-    const credential = await createUserWithEmailAndPassword(auth,
-      emailInput.value,passwordInput.value);
-
-    if(displayNameInput.value.trim()){
-      await updateProfile(credential.user, {
-        displayName: displayNameInput.value.trim()
-      });
+    const credential = await createUserWithEmailAndPassword(auth, ui.emailInput.value, ui.passwordInput.value);
+    if (ui.displayNameInput.value.trim()) {
+      await updateProfile(credential.user, { displayName: ui.displayNameInput.value.trim() });
     }
     setStatus("新規登録に成功しました。", "success");
-  }catch(e){showAuthError(e);}
+  } catch (error) {
+    showAuthError(error);
+  }
 };
 
-document.getElementById("login").onclick = async()=>{
-  try{
+document.getElementById("login").onclick = async () => {
+  try {
     setStatus("");
-    await signInWithEmailAndPassword(auth,
-      emailInput.value,passwordInput.value);
+    await signInWithEmailAndPassword(auth, ui.emailInput.value, ui.passwordInput.value);
     setStatus("ログインに成功しました。", "success");
-  }catch(e){showAuthError(e);}
+  } catch (error) {
+    showAuthError(error);
+  }
 };
 
-document.getElementById("logout").onclick =
-()=> signOut(auth);
+document.getElementById("logout").onclick = () => signOut(auth);
 
-/* 認証監視 */
-onAuthStateChanged(auth,user=>{
-  if(!user){
-    authDiv.style.display="grid";
-    chatDiv.style.display="none";
+onAuthStateChanged(auth, (user) => {
+  if (!user) {
+    ui.authDiv.style.display = "grid";
+    ui.chatDiv.style.display = "none";
     return;
   }
 
-  authDiv.style.display="none";
-  chatDiv.style.display="flex";
+  ui.authDiv.style.display = "none";
+  ui.chatDiv.style.display = "flex";
 
-  const q=query(collection(db,"messages"),
-    orderBy("createdAt"));
-
-  onSnapshot(q,snap=>{
+  onSnapshot(query(collection(db, "messages"), orderBy("createdAt")), (snap) => {
     allMessages = [];
-    snap.forEach((doc)=>allMessages.push(doc.data()));
-    renderMessages(allMessages, user);
+    snap.forEach((d) => allMessages.push(d.data()));
+    renderMessages();
+  });
+
+  onSnapshot(collection(db, "users", user.uid, "friends"), (snap) => {
+    friends = [];
+    snap.forEach((d) => friends.push(d.data()));
+    renderFriends();
+    renderMessages();
   });
 });
 
-searchInput.oninput = ()=>{
-  if(auth.currentUser){
-    renderMessages(allMessages, auth.currentUser);
-  }
-};
+ui.searchInput.oninput = renderMessages;
 
-/* 送信 */
-document.getElementById("send").onclick=async()=>{
-  if(!auth.currentUser)return;
-  if(!msgInput.value.trim() && !imageInput.files[0]) return;
-
-  let imageBase64=null;
-  const file=imageInput.files[0];
-
-  if(file){
-    imageBase64=await new Promise(res=>{
-      const reader=new FileReader();
-      reader.onload=()=>res(reader.result);
-      reader.readAsDataURL(file);
-    });
-  }
-
-  await addDoc(collection(db,"messages"),{
-    text:msgInput.value.trim(),
-    image:imageBase64,
-    name:auth.currentUser.displayName || emailInput.value || "匿名",
-    uid:auth.currentUser.uid,
-    createdAt:serverTimestamp()
-  });
-
-  msgInput.value="";
-  imageInput.value="";
-};
-
-/* AI */
-document.getElementById("aiBtn").onclick=async()=>{
-  const text=msgInput.value;
-  if(!text)return;
-
-  const res=await fetch(
-  "https://api.groq.com/openai/v1/chat/completions",{
-    method:"POST",
-    headers:{
-      "Content-Type":"application/json",
-      "Authorization":"org_01kjpzdja9fantcz1g0jmhare9"
-    },
-    body:JSON.stringify({
-      model:"gemma-7b-it",
-      messages:[{role:"user",content:text}]
-    })
-  });
-
-  const data=await res.json();
-  msgInput.value=data.choices?.[0]?.message?.content || "AI応答を取得できませんでした";
-};
-
-msgInput.addEventListener("keydown", (event)=>{
-  if(event.key === "Enter"){
+ui.msgInput.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
     event.preventDefault();
     document.getElementById("send").click();
   }
 });
 
-document.getElementById("themeToggle").onclick = ()=>{
-  document.body.classList.toggle("dark");
+document.getElementById("addFriend").onclick = async () => {
+  if (!auth.currentUser) return;
+  const email = ui.friendEmail.value.trim().toLowerCase();
+  if (!email || !email.includes("@")) {
+    setStatus("有効なメールアドレスでフレンド追加してください。", "error");
+    return;
+  }
+
+  await setDoc(doc(db, "users", auth.currentUser.uid, "friends", friendDocId(email)), {
+    email,
+    name: email.split("@")[0],
+    createdAt: serverTimestamp()
+  });
+
+  ui.friendEmail.value = "";
+  setStatus("フレンドを追加しました。", "success");
+};
+
+document.getElementById("send").onclick = async () => {
+  if (!auth.currentUser) return;
+  if (!ui.msgInput.value.trim() && !ui.imageInput.files[0]) return;
+
+  let imageBase64 = null;
+  const file = ui.imageInput.files[0];
+
+  if (file) {
+    imageBase64 = await new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.readAsDataURL(file);
+    });
+  }
+
+  await addDoc(collection(db, "messages"), {
+    text: ui.msgInput.value.trim(),
+    image: imageBase64,
+    name: auth.currentUser.displayName || (auth.currentUser.email || "匿名"),
+    senderEmail: auth.currentUser.email || "",
+    targetEmail: selectedFriendEmail || null,
+    uid: auth.currentUser.uid,
+    createdAt: serverTimestamp()
+  });
+
+  ui.msgInput.value = "";
+  ui.imageInput.value = "";
+};
+
+document.getElementById("aiBtn").onclick = async () => {
+  const text = ui.msgInput.value;
+  if (!text) return;
+
+  const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": "org_01kjpzdja9fantcz1g0jmhare9"
+    },
+    body: JSON.stringify({
+      model: "gemma-7b-it",
+      messages: [{ role: "user", content: text }]
+    })
+  });
+
+  const data = await res.json();
+  ui.msgInput.value = data.choices?.[0]?.message?.content || "AI応答を取得できませんでした";
 };
 </script>
 </body>
