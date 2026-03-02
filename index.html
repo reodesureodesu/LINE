@@ -1,24 +1,57 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <meta charset="UTF-8">
-  <title>LINE Clone</title>
+<meta charset="UTF-8">
+<title>LINE Clone Ultimate</title>
+<style>
+body { font-family: sans-serif; background:#e5ddd5; }
+#chat { display:none; }
+.message { padding:8px; margin:5px; border-radius:10px; max-width:60%; }
+.me { background:#9fe8a3; margin-left:auto; }
+.other { background:white; }
+</style>
 </head>
 <body>
-  <h2>LINE Clone</h2>
-  <button id="loginBtn">Google Login</button>
-  <div id="chat" style="display:none;">
-    <div id="messages"></div>
-    <input id="msg" placeholder="message">
-    <button id="sendBtn">Send</button>
-  </div>
+
+<h2>LINE Clone Ultimate</h2>
+
+<h3>Login</h3>
+<input id="email" placeholder="Email">
+<input id="password" type="password" placeholder="Password">
+<button id="registerBtn">Register</button>
+<button id="emailLoginBtn">Email Login</button>
+<button id="googleLoginBtn">Google Login</button>
+
+<div id="chat">
+  <h3 id="welcome"></h3>
+  <button id="logoutBtn">Logout</button>
+  <br><br>
+  <input id="msg" placeholder="message">
+  <button id="sendBtn">Send</button>
+  <div id="messages"></div>
+</div>
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getAuth, signInWithPopup, GoogleAuthProvider } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-import { getFirestore, collection, addDoc, onSnapshot, query, orderBy, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import { 
+  getAuth, 
+  signInWithPopup, 
+  GoogleAuthProvider,
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  onAuthStateChanged,
+  signOut
+} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+import { 
+  getFirestore, 
+  collection, 
+  addDoc, 
+  onSnapshot, 
+  query, 
+  orderBy, 
+  serverTimestamp 
+} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
-// 🔽 あなたのfirebaseConfigに置き換える
 const firebaseConfig = {
   apiKey: "AIzaSyDNUzhTrnAAUJye82vNZEy0Sgnj7e8IR9E",
   authDomain: "line-16068.firebaseapp.com",
@@ -32,33 +65,57 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-const loginBtn = document.getElementById("loginBtn");
-const sendBtn = document.getElementById("sendBtn");
+const registerBtn = document.getElementById("registerBtn");
+const emailLoginBtn = document.getElementById("emailLoginBtn");
+const googleLoginBtn = document.getElementById("googleLoginBtn");
+const logoutBtn = document.getElementById("logoutBtn");
 
-loginBtn.onclick = async () => {
+registerBtn.onclick = async () => {
+  const email = email.value;
+  const password = password.value;
+  await createUserWithEmailAndPassword(auth,email,password);
+};
+
+emailLoginBtn.onclick = async () => {
+  await signInWithEmailAndPassword(auth,email.value,password.value);
+};
+
+googleLoginBtn.onclick = async () => {
   const provider = new GoogleAuthProvider();
-  await signInWithPopup(auth, provider);
-  document.getElementById("chat").style.display = "block";
+  await signInWithPopup(auth,provider);
 };
 
-sendBtn.onclick = async () => {
-  const text = document.getElementById("msg").value;
-  if (!text) return;
+logoutBtn.onclick = async () => {
+  await signOut(auth);
+};
 
-  await addDoc(collection(db, "messages"), {
+onAuthStateChanged(auth,(user)=>{
+  if(user){
+    document.getElementById("chat").style.display="block";
+    document.getElementById("welcome").innerText="Hello "+user.email;
+  }
+});
+
+document.getElementById("sendBtn").onclick = async ()=>{
+  const text = msg.value;
+  if(!text) return;
+  await addDoc(collection(db,"messages"),{
     text,
-    createdAt: serverTimestamp(),
-    uid: auth.currentUser.uid
+    uid:auth.currentUser.uid,
+    createdAt:serverTimestamp()
   });
-
-  document.getElementById("msg").value = "";
+  msg.value="";
 };
 
-onSnapshot(query(collection(db, "messages"), orderBy("createdAt")), (snapshot) => {
+onSnapshot(query(collection(db,"messages"),orderBy("createdAt")),snapshot=>{
   const div = document.getElementById("messages");
-  div.innerHTML = "";
-  snapshot.forEach(doc => {
-    div.innerHTML += "<p>" + doc.data().text + "</p>";
+  div.innerHTML="";
+  snapshot.forEach(doc=>{
+    const data = doc.data();
+    const p = document.createElement("div");
+    p.className="message "+(data.uid===auth.currentUser?.uid?"me":"other");
+    p.innerText=data.text;
+    div.appendChild(p);
   });
 });
 </script>
