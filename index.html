@@ -229,14 +229,29 @@ header {
 }
 
 .stamp-btn {
-  min-width: 38px;
-  height: 34px;
-  border-radius: 10px;
+  min-width: 44px;
+  height: 40px;
+  border-radius: 12px;
   padding: 0;
-  font-size: 1.1rem;
+  font-size: 1.35rem;
   background: #e5e7eb;
   color: #111827;
 }
+
+.msg.stamp-only {
+  font-size: 2.4rem;
+  line-height: 1.05;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 4px 8px;
+}
+
+.msg.stamp-only .message-meta {
+  font-size: 0.65rem;
+  opacity: 0.75;
+}
+
 
 .friend-badges {
   display: flex;
@@ -453,6 +468,57 @@ const fileToDataUrl = (file) => new Promise((resolve) => {
   reader.readAsDataURL(file);
 });
 
+const playPopSound = () => {
+  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContextClass) return;
+  const ctx = new AudioContextClass();
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = "triangle";
+  osc.frequency.setValueAtTime(720, ctx.currentTime);
+  osc.frequency.exponentialRampToValueAtTime(420, ctx.currentTime + 0.08);
+  gain.gain.setValueAtTime(0.001, ctx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.12, ctx.currentTime + 0.01);
+  gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.12);
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+  osc.start();
+  osc.stop(ctx.currentTime + 0.12);
+  setTimeout(() => ctx.close(), 200);
+};
+
+const canSendToCurrentFriend = () => {
+  const currentFriend = friends.find((friend) => friend.email === selectedFriendEmail);
+  if (selectedFriendEmail && currentFriend?.blocked) {
+    setStatus("ブロック中のフレンドには送信できません。", "error");
+    return false;
+  }
+  return true;
+};
+
+const buildMessagePayload = ({ text = "", image = null, audio = null }) => ({
+  text,
+  image,
+  audio,
+  name: auth.currentUser.displayName || (auth.currentUser.email || "匿名"),
+  senderEmail: auth.currentUser.email || "",
+  targetEmail: selectedFriendEmail || null,
+  conversationId: selectedFriendEmail ? buildConversationId(auth.currentUser.email || "", selectedFriendEmail) : null,
+  uid: auth.currentUser.uid,
+  createdAt: serverTimestamp(),
+  readByIds: [auth.currentUser.uid]
+});
+
+const postMessage = async (payload) => {
+  await addDoc(collection(db, "messages"), buildMessagePayload(payload));
+  if (selectedFriendEmail) {
+    await setDoc(doc(db, "users", auth.currentUser.uid, "friends", friendDocId(selectedFriendEmail)), {
+      lastChattedAt: serverTimestamp()
+    }, { merge: true });
+  }
+  playPopSound();
+};
+
 const applyUserSettings = () => {
   if (userSettings.profileImage) {
     ui.profileAvatar.src = userSettings.profileImage;
@@ -491,9 +557,13 @@ const renderStampBar = () => {
     const btn = document.createElement("button");
     btn.className = "stamp-btn";
     btn.textContent = stamp;
-    btn.onclick = () => {
-      ui.msgInput.value = `${ui.msgInput.value}${stamp}`;
-      ui.msgInput.focus();
+    btn.onclick = async () => {
+      if (!auth.currentUser) {
+        setStatus("スタンプ送信にはログインが必要です。", "error");
+        return;
+      }
+      if (!canSendToCurrentFriend()) return;
+      await postMessage({ text: stamp, image: null, audio: null });
     };
     ui.stampBar.appendChild(btn);
   });
@@ -629,7 +699,8 @@ const renderMessages = () => {
   const visibleMessages = filteredMessages();
   visibleMessages.forEach((data) => {
     const div = document.createElement("div");
-    div.className = "msg " + (data.uid === user.uid ? "me" : "other");
+    const isStampOnly = !!(data.text && STAMPS.includes((data.text || "").trim()) && !data.image && !data.audio);
+    div.className = "msg " + (data.uid === user.uid ? "me" : "other") + (isStampOnly ? " stamp-only" : "");
     div.textContent = data.text || "";
 
     if (data.image) {
@@ -813,11 +884,7 @@ document.getElementById("addFriend").onclick = async () => {
 
 document.getElementById("recordBtn").onclick = async () => {
   if (!auth.currentUser) return;
-  const currentFriend = friends.find((friend) => friend.email === selectedFriendEmail);
-  if (selectedFriendEmail && currentFriend?.blocked) {
-    setStatus("ブロック中のフレンドには送信できません。", "error");
-    return;
-  }
+  if (!canSendToCurrentFriend()) return;
 
   if (mediaRecorder && mediaRecorder.state === "recording") {
     mediaRecorder.stop();
@@ -839,24 +906,7 @@ document.getElementById("recordBtn").onclick = async () => {
       const blob = new Blob(chunks, { type: "audio/webm" });
       const audioBase64 = await fileToDataUrl(new File([blob], "voice.webm", { type: "audio/webm" }));
 
-      await addDoc(collection(db, "messages"), {
-        text: "🎤 音声メッセージ",
-        image: null,
-        audio: audioBase64,
-        name: auth.currentUser.displayName || (auth.currentUser.email || "匿名"),
-        senderEmail: auth.currentUser.email || "",
-        targetEmail: selectedFriendEmail || null,
-        conversationId: selectedFriendEmail ? buildConversationId(auth.currentUser.email || "", selectedFriendEmail) : null,
-        uid: auth.currentUser.uid,
-        createdAt: serverTimestamp(),
-        readByIds: [auth.currentUser.uid]
-      });
-
-      if (selectedFriendEmail) {
-        await setDoc(doc(db, "users", auth.currentUser.uid, "friends", friendDocId(selectedFriendEmail)), {
-          lastChattedAt: serverTimestamp()
-        }, { merge: true });
-      }
+      await postMessage({ text: "🎤 音声メッセージ", image: null, audio: audioBase64 });
 
       if (recordingStream) {
         recordingStream.getTracks().forEach((track) => track.stop());
@@ -874,11 +924,7 @@ document.getElementById("recordBtn").onclick = async () => {
 
 document.getElementById("send").onclick = async () => {
   if (!auth.currentUser) return;
-  const currentFriend = friends.find((friend) => friend.email === selectedFriendEmail);
-  if (selectedFriendEmail && currentFriend?.blocked) {
-    setStatus("ブロック中のフレンドには送信できません。", "error");
-    return;
-  }
+  if (!canSendToCurrentFriend()) return;
   const text = ui.msgInput.value.trim();
 
   if (editingMessageId) {
@@ -906,23 +952,7 @@ document.getElementById("send").onclick = async () => {
     imageBase64 = await fileToDataUrl(file);
   }
 
-  await addDoc(collection(db, "messages"), {
-    text,
-    image: imageBase64,
-    name: auth.currentUser.displayName || (auth.currentUser.email || "匿名"),
-    senderEmail: auth.currentUser.email || "",
-    targetEmail: selectedFriendEmail || null,
-    conversationId: selectedFriendEmail ? buildConversationId(auth.currentUser.email || "", selectedFriendEmail) : null,
-    uid: auth.currentUser.uid,
-    createdAt: serverTimestamp(),
-    readByIds: [auth.currentUser.uid]
-  });
-
-  if (selectedFriendEmail) {
-    await setDoc(doc(db, "users", auth.currentUser.uid, "friends", friendDocId(selectedFriendEmail)), {
-      lastChattedAt: serverTimestamp()
-    }, { merge: true });
-  }
+  await postMessage({ text, image: imageBase64, audio: null });
 
   ui.msgInput.value = "";
   ui.imageInput.value = "";
