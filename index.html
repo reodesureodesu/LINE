@@ -1,1 +1,62 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>LINE Clone</title>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js"></script>
+</head>
+<body>
+  <h2>LINE Clone</h2>
+  <button onclick="login()">Google Login</button>
+  <div id="chat" style="display:none;">
+    <div id="messages"></div>
+    <input id="msg" placeholder="message">
+    <button onclick="send()">Send</button>
+  </div>
 
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getAuth, signInWithPopup, GoogleAuthProvider } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+import { getFirestore, collection, addDoc, onSnapshot, query, orderBy, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "ここに貼る",
+  authDomain: "ここに貼る",
+  projectId: "ここに貼る",
+  storageBucket: "ここに貼る",
+  messagingSenderId: "ここに貼る",
+  appId: "ここに貼る"
+};
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+
+window.login = async function() {
+  const provider = new GoogleAuthProvider();
+  await signInWithPopup(auth, provider);
+  document.getElementById("chat").style.display = "block";
+};
+
+window.send = async function() {
+  const text = document.getElementById("msg").value;
+  await addDoc(collection(db, "messages"), {
+    text,
+    createdAt: serverTimestamp(),
+    uid: auth.currentUser.uid
+  });
+  document.getElementById("msg").value = "";
+};
+
+onSnapshot(query(collection(db, "messages"), orderBy("createdAt")), (snapshot) => {
+  const div = document.getElementById("messages");
+  div.innerHTML = "";
+  snapshot.forEach(doc => {
+    div.innerHTML += "<p>" + doc.data().text + "</p>";
+  });
+});
+</script>
+</body>
+</html>
