@@ -127,30 +127,65 @@ document.getElementById("googleLogin").onclick=()=>{
   signInWithPopup(auth,googleProvider);
 };
 
-document.getElementById("emailRegister").onclick=()=>{
-  createUserWithEmailAndPassword(auth,
-    email.value,password.value);
+document.getElementById("emailRegister").onclick = async () => {
+  try {
+    await createUserWithEmailAndPassword(auth, email.value, password.value);
+    alert("登録成功！");
+  } catch (e) {
+    alert(e.message);
+  }
 };
 
-document.getElementById("emailLogin").onclick=()=>{
-  signInWithEmailAndPassword(auth,
-    email.value,password.value);
+document.getElementById("emailLogin").onclick = async () => {
+  try {
+    await signInWithEmailAndPassword(auth, email.value, password.value);
+  } catch (e) {
+    alert(e.message);
+  }
 };
 
 document.getElementById("logout").onclick=()=>{
   signOut(auth);
 };
 
-onAuthStateChanged(auth,user=>{
-  if(user){
-    authDiv.style.display="none";
-    chat.style.display="block";
-  }else{
-    authDiv.style.display="block";
-    chat.style.display="none";
-  }
-});
+onAuthStateChanged(auth, user => {
 
+  if (!user) {
+    authDiv.style.display = "block";
+    chat.style.display = "none";
+    return;
+  }
+
+  authDiv.style.display = "none";
+  chat.style.display = "block";
+
+  const q = query(collection(db,"messages"), orderBy("createdAt"));
+
+  onSnapshot(q, (snap) => {
+    messages.innerHTML = "";
+
+    snap.forEach(doc => {
+      const data = doc.data();
+      const div = document.createElement("div");
+
+      div.className = "msg " + (data.uid === user.uid ? "me" : "other");
+
+      div.innerHTML = data.text || "";
+
+      if (data.image) {
+        const img = document.createElement("img");
+        img.src = data.image;
+        img.className = "chatimg";
+        div.appendChild(img);
+      }
+
+      messages.appendChild(div);
+    });
+
+    messages.scrollTop = messages.scrollHeight;
+  });
+
+});
 document.getElementById("send").onclick=async()=>{
   if(!auth.currentUser)return;
   const text=msg.value;
