@@ -205,7 +205,8 @@ header {
 
 #inputArea { display: grid; grid-template-columns: 1fr auto; gap: 8px; padding: 12px; background: var(--surface); }
 #imageInput,
-#audioInput { grid-column: 1 / -1; }
+#profileImageInput,
+#backgroundImageInput { grid-column: 1 / -1; }
 #actions { display: flex; gap: 8px; }
 
 input, button { font: inherit; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--border); }
@@ -214,6 +215,22 @@ button { background: var(--line-green); color: white; border: none; cursor: poin
 #googleLogin { background: #fff; color: #111827; border: 1px solid #d1d5db; }
 #logout { margin: 0 12px 12px; background: #ef4444; }
 #aiBtn { background: #6366f1; }
+#recordBtn { background: #ef4444; }
+
+#profileAvatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid rgba(255,255,255,.5);
+  background: rgba(255,255,255,.2);
+}
+
+#messages.custom-bg {
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+}
 
 body.dark {
   --bg-gradient: linear-gradient(160deg, #0f172a 0%, #111827 60%, #1f2937 100%);
@@ -240,6 +257,12 @@ body.dark .other { background: #1f2937; color: #f9fafb; }
     </div>
     <ul id="friendList"></ul>
     <div>
+      <label for="profileImageInput">プロフィール画像（GIF可）</label>
+      <input id="profileImageInput" type="file" accept="image/*,.gif">
+      <label for="backgroundImageInput" style="margin-top:8px;display:block;">背景画像（GIF可）</label>
+      <input id="backgroundImageInput" type="file" accept="image/*,.gif">
+    </div>
+    <div>
       <label for="fontSizeSlider">文字サイズスライドバー</label>
       <input id="fontSizeSlider" type="range" min="14" max="24" value="18">
     </div>
@@ -248,7 +271,10 @@ body.dark .other { background: #1f2937; color: #f9fafb; }
   <header>
     <button id="menuBtn">☰</button>
     <strong style="text-align:center;letter-spacing:.02em">LINE Ultimate</strong>
-    <button id="themeToggle">テーマ</button>
+    <div style="display:flex; gap:8px; justify-self:end; align-items:center;">
+      <img id="profileAvatar" alt="avatar">
+      <button id="themeToggle">テーマ</button>
+    </div>
   </header>
 
   <div id="auth">
@@ -275,9 +301,9 @@ body.dark .other { background: #1f2937; color: #f9fafb; }
         <div id="actions">
           <button id="send">送信</button>
           <button id="aiBtn">AI</button>
+          <button id="recordBtn">🎤録音</button>
         </div>
         <input type="file" id="imageInput" accept="image/*">
-        <input type="file" id="audioInput" accept="audio/*">
       </div>
       <button id="logout">ログアウト</button>
     </div>
@@ -313,7 +339,9 @@ const ui = {
   displayNameInput: document.getElementById("displayName"),
   msgInput: document.getElementById("msg"),
   imageInput: document.getElementById("imageInput"),
-  audioInput: document.getElementById("audioInput"),
+  profileImageInput: document.getElementById("profileImageInput"),
+  backgroundImageInput: document.getElementById("backgroundImageInput"),
+  profileAvatar: document.getElementById("profileAvatar"),
   searchInput: document.getElementById("searchInput"),
   chatMode: document.getElementById("chatMode"),
   sidebar: document.getElementById("sidebar"),
@@ -328,6 +356,9 @@ let allMessages = [];
 let friends = [];
 let selectedFriendEmail = "";
 let editingMessageId = null;
+let mediaRecorder = null;
+let recordingStream = null;
+let userSettings = { profileImage: "", backgroundImage: "" };
 
 const authErrorMessages = {
   "auth/email-already-in-use": "このメールアドレスはすでに登録されています。ログインをお試しください。",
@@ -356,6 +387,29 @@ const setStatus = (message, type="info") => {
 const showAuthError = (error) => {
   const msg = authErrorMessages[error.code] || `認証エラーが発生しました (${error.code || "unknown"})`;
   setStatus(msg, "error");
+};
+
+
+const fileToDataUrl = (file) => new Promise((resolve) => {
+  const reader = new FileReader();
+  reader.onload = () => resolve(reader.result);
+  reader.readAsDataURL(file);
+});
+
+const applyUserSettings = () => {
+  if (userSettings.profileImage) {
+    ui.profileAvatar.src = userSettings.profileImage;
+  } else {
+    ui.profileAvatar.removeAttribute("src");
+  }
+
+  if (userSettings.backgroundImage) {
+    ui.messagesDiv.style.backgroundImage = `url(${userSettings.backgroundImage})`;
+    ui.messagesDiv.classList.add("custom-bg");
+  } else {
+    ui.messagesDiv.style.backgroundImage = "";
+    ui.messagesDiv.classList.remove("custom-bg");
+  }
 };
 
 const formatTime = (value) => {
@@ -571,9 +625,34 @@ onAuthStateChanged(auth, (user) => {
     renderFriends();
     renderMessages();
   });
+
+  onSnapshot(doc(db, "users", user.uid), (snap) => {
+    const data = snap.data() || {};
+    userSettings = {
+      profileImage: data.profileImage || "",
+      backgroundImage: data.backgroundImage || ""
+    };
+    applyUserSettings();
+  });
 });
 
 ui.searchInput.oninput = renderMessages;
+
+ui.profileImageInput.onchange = async () => {
+  if (!auth.currentUser || !ui.profileImageInput.files[0]) return;
+  const dataUrl = await fileToDataUrl(ui.profileImageInput.files[0]);
+  await setDoc(doc(db, "users", auth.currentUser.uid), { profileImage: dataUrl }, { merge: true });
+  setStatus("プロフィール画像を更新しました。", "success");
+  ui.profileImageInput.value = "";
+};
+
+ui.backgroundImageInput.onchange = async () => {
+  if (!auth.currentUser || !ui.backgroundImageInput.files[0]) return;
+  const dataUrl = await fileToDataUrl(ui.backgroundImageInput.files[0]);
+  await setDoc(doc(db, "users", auth.currentUser.uid), { backgroundImage: dataUrl }, { merge: true });
+  setStatus("背景画像を更新しました。", "success");
+  ui.backgroundImageInput.value = "";
+};
 
 ui.msgInput.addEventListener("keydown", (event) => {
   if (event.key === "Enter") {
@@ -606,6 +685,55 @@ document.getElementById("addFriend").onclick = async () => {
   setStatus("フレンドを追加しました。", "success");
 };
 
+
+document.getElementById("recordBtn").onclick = async () => {
+  if (!auth.currentUser) return;
+
+  if (mediaRecorder && mediaRecorder.state === "recording") {
+    mediaRecorder.stop();
+    document.getElementById("recordBtn").textContent = "🎤録音";
+    setStatus("録音を停止して送信中です...", "info");
+    return;
+  }
+
+  try {
+    recordingStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    mediaRecorder = new MediaRecorder(recordingStream);
+    const chunks = [];
+
+    mediaRecorder.ondataavailable = (event) => {
+      if (event.data.size > 0) chunks.push(event.data);
+    };
+
+    mediaRecorder.onstop = async () => {
+      const blob = new Blob(chunks, { type: "audio/webm" });
+      const audioBase64 = await fileToDataUrl(new File([blob], "voice.webm", { type: "audio/webm" }));
+
+      await addDoc(collection(db, "messages"), {
+        text: "🎤 音声メッセージ",
+        image: null,
+        audio: audioBase64,
+        name: auth.currentUser.displayName || (auth.currentUser.email || "匿名"),
+        senderEmail: auth.currentUser.email || "",
+        targetEmail: selectedFriendEmail || null,
+        uid: auth.currentUser.uid,
+        createdAt: serverTimestamp()
+      });
+
+      if (recordingStream) {
+        recordingStream.getTracks().forEach((track) => track.stop());
+      }
+      setStatus("録音した音声を送信しました。", "success");
+    };
+
+    mediaRecorder.start();
+    document.getElementById("recordBtn").textContent = "■停止";
+    setStatus("録音中...もう一度押すと自動送信します。", "info");
+  } catch (error) {
+    setStatus("マイクを利用できませんでした。ブラウザ権限を確認してください。", "error");
+  }
+};
+
 document.getElementById("send").onclick = async () => {
   if (!auth.currentUser) return;
   const text = ui.msgInput.value.trim();
@@ -622,38 +750,22 @@ document.getElementById("send").onclick = async () => {
     cancelEditMode();
     ui.msgInput.value = "";
     ui.imageInput.value = "";
-    ui.audioInput.value = "";
     setStatus("メッセージを更新しました。", "success");
     return;
   }
 
-  if (!text && !ui.imageInput.files[0] && !ui.audioInput.files[0]) return;
+  if (!text && !ui.imageInput.files[0]) return;
 
   let imageBase64 = null;
-  let audioBase64 = null;
   const file = ui.imageInput.files[0];
-  const audioFile = ui.audioInput.files[0];
 
   if (file) {
-    imageBase64 = await new Promise((resolve) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result);
-      reader.readAsDataURL(file);
-    });
-  }
-
-  if (audioFile) {
-    audioBase64 = await new Promise((resolve) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result);
-      reader.readAsDataURL(audioFile);
-    });
+    imageBase64 = await fileToDataUrl(file);
   }
 
   await addDoc(collection(db, "messages"), {
     text,
     image: imageBase64,
-    audio: audioBase64,
     name: auth.currentUser.displayName || (auth.currentUser.email || "匿名"),
     senderEmail: auth.currentUser.email || "",
     targetEmail: selectedFriendEmail || null,
@@ -663,7 +775,6 @@ document.getElementById("send").onclick = async () => {
 
   ui.msgInput.value = "";
   ui.imageInput.value = "";
-  ui.audioInput.value = "";
 };
 
 document.getElementById("aiBtn").onclick = async () => {
