@@ -59,7 +59,10 @@ const db = getFirestore(app);
 let userData = null;
 
 onAuthStateChanged(auth, async (user)=>{
-if(!user){ location.href="login.html"; return; }
+if(!user){
+  alert("ログインしてください");
+  return;
+}
 
 await setDoc(doc(db,"users",user.uid),{
 online:true
