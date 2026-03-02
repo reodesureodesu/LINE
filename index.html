@@ -3,17 +3,14 @@
 <head>
   <meta charset="UTF-8">
   <title>LINE Clone</title>
-  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js"></script>
 </head>
 <body>
   <h2>LINE Clone</h2>
-  <button onclick="login()">Google Login</button>
+  <button id="loginBtn">Google Login</button>
   <div id="chat" style="display:none;">
     <div id="messages"></div>
     <input id="msg" placeholder="message">
-    <button onclick="send()">Send</button>
+    <button id="sendBtn">Send</button>
   </div>
 
 <script type="module">
@@ -21,32 +18,39 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/fireba
 import { getAuth, signInWithPopup, GoogleAuthProvider } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, collection, addDoc, onSnapshot, query, orderBy, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
+// 🔽 あなたのfirebaseConfigに置き換える
 const firebaseConfig = {
-  apiKey: "ここに貼る",
-  authDomain: "ここに貼る",
-  projectId: "ここに貼る",
-  storageBucket: "ここに貼る",
-  messagingSenderId: "ここに貼る",
-  appId: "ここに貼る"
+  apiKey: "AIzaSyDNUzhTrnAAUJye82vNZEy0Sgnj7e8IR9E",
+  authDomain: "line-16068.firebaseapp.com",
+  projectId: "line-16068",
+  storageBucket: "line-16068.firebasestorage.app",
+  messagingSenderId: "35972275719",
+  appId: "1:35972275719:web:383fd1ac8a47ceca96d4a2"
 };
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-window.login = async function() {
+const loginBtn = document.getElementById("loginBtn");
+const sendBtn = document.getElementById("sendBtn");
+
+loginBtn.onclick = async () => {
   const provider = new GoogleAuthProvider();
   await signInWithPopup(auth, provider);
   document.getElementById("chat").style.display = "block";
 };
 
-window.send = async function() {
+sendBtn.onclick = async () => {
   const text = document.getElementById("msg").value;
+  if (!text) return;
+
   await addDoc(collection(db, "messages"), {
     text,
     createdAt: serverTimestamp(),
     uid: auth.currentUser.uid
   });
+
   document.getElementById("msg").value = "";
 };
 
