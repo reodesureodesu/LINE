@@ -142,7 +142,7 @@ header {
 #statusBar.error { background: #fef2f2; color: #b91c1c; }
 #statusBar.success { background: #ecfdf5; color: #047857; }
 
-#chat { display: none; flex: 1; flex-direction: column; background: linear-gradient(180deg, #f8fcff 0%, #f2fbf6 100%); }
+#chat { display: none; flex: 1; flex-direction: column; background: linear-gradient(180deg, #f8fcff 0%, #f2fbf6 100%); min-height: 0; overflow: hidden; }
 
 #toolbar {
   display: flex;
@@ -154,6 +154,7 @@ header {
 
 #messages {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   padding: 16px 14px;
   display: flex;
@@ -178,7 +179,31 @@ header {
 .message-meta { display: block; margin-top: 6px; font-size: 0.72rem; opacity: 0.75; }
 .chatimg { width: 100%; max-width: 190px; border-radius: 10px; margin-top: 8px; display: block; }
 
-#inputArea { display: grid; grid-template-columns: 1fr auto; gap: 8px; padding: 12px; border-top: 1px solid var(--border); background: var(--surface); }
+.msg-actions {
+  margin-top: 8px;
+  display: flex;
+  gap: 6px;
+}
+
+.msg-actions button {
+  padding: 4px 8px;
+  border-radius: 8px;
+  font-size: 0.7rem;
+}
+
+.msg-edit { background: #0ea5e9; }
+.msg-delete { background: #ef4444; }
+
+#bottomBar {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+}
+
+
+#inputArea { display: grid; grid-template-columns: 1fr auto; gap: 8px; padding: 12px; background: var(--surface); }
 #imageInput { grid-column: 1 / -1; }
 #actions { display: flex; gap: 8px; }
 
@@ -197,7 +222,7 @@ body.dark {
   --text-muted: #9ca3af;
   --border: #374151;
 }
-body.dark #toolbar, body.dark #inputArea, body.dark #googleLogin { background: #1f2937; color: #f9fafb; }
+body.dark #toolbar, body.dark #inputArea, body.dark #googleLogin, body.dark #bottomBar { background: #1f2937; color: #f9fafb; }
 body.dark .other { background: #1f2937; color: #f9fafb; }
 </style>
 </head>
@@ -242,22 +267,24 @@ body.dark .other { background: #1f2937; color: #f9fafb; }
       <small id="chatMode" style="align-self:center;white-space:nowrap">全体</small>
     </div>
     <div id="messages"></div>
-    <div id="inputArea">
-      <input id="msg" placeholder="message">
-      <div id="actions">
-        <button id="send">送信</button>
-        <button id="aiBtn">AI</button>
+    <div id="bottomBar">
+      <div id="inputArea">
+        <input id="msg" placeholder="message">
+        <div id="actions">
+          <button id="send">送信</button>
+          <button id="aiBtn">AI</button>
+        </div>
+        <input type="file" id="imageInput" accept="image/*">
       </div>
-      <input type="file" id="imageInput" accept="image/*">
+      <button id="logout">ログアウト</button>
     </div>
-    <button id="logout">ログアウト</button>
   </div>
 </div>
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, GoogleAuthProvider, signInWithPopup, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, signOut, updateProfile } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-import { getFirestore, collection, addDoc, onSnapshot, query, orderBy, serverTimestamp, doc, setDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import { getFirestore, collection, addDoc, onSnapshot, query, orderBy, serverTimestamp, doc, setDoc, deleteDoc, updateDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyDNUzhTrnAAUJye82vNZEy0Sgnj7e8IR9E",
@@ -295,6 +322,7 @@ const ui = {
 let allMessages = [];
 let friends = [];
 let selectedFriendEmail = "";
+let editingMessageId = null;
 
 const authErrorMessages = {
   "auth/email-already-in-use": "このメールアドレスはすでに登録されています。ログインをお試しください。",
@@ -390,6 +418,20 @@ const filteredMessages = () => {
     .filter((msg) => !keyword || (msg.text || "").toLowerCase().includes(keyword));
 };
 
+const startEditMessage = (message) => {
+  if (!message || !message.id) return;
+  editingMessageId = message.id;
+  ui.msgInput.value = message.text || "";
+  document.getElementById("send").textContent = "更新";
+  ui.msgInput.focus();
+  setStatus("編集モード: テキストを修正して更新を押してください。", "info");
+};
+
+const cancelEditMode = () => {
+  editingMessageId = null;
+  document.getElementById("send").textContent = "送信";
+};
+
 const renderMessages = () => {
   const user = auth.currentUser;
   if (!user) return;
@@ -411,8 +453,33 @@ const renderMessages = () => {
 
     const meta = document.createElement("small");
     meta.className = "message-meta";
-    meta.textContent = `${data.name || "匿名"}・${formatTime(data.createdAt)}`;
+    meta.textContent = `${data.name || "匿名"}・${formatTime(data.createdAt)}${data.editedAt ? " (編集済み)" : ""}`;
     div.appendChild(meta);
+
+    if (data.uid === user.uid && data.id) {
+      const actionWrap = document.createElement("div");
+      actionWrap.className = "msg-actions";
+
+      const editBtn = document.createElement("button");
+      editBtn.className = "msg-edit";
+      editBtn.textContent = "編集";
+      editBtn.onclick = () => startEditMessage(data);
+
+      const deleteBtn = document.createElement("button");
+      deleteBtn.className = "msg-delete";
+      deleteBtn.textContent = "削除";
+      deleteBtn.onclick = async () => {
+        if (!confirm("このメッセージを削除しますか？")) return;
+        await deleteDoc(doc(db, "messages", data.id));
+        if (editingMessageId === data.id) {
+          cancelEditMode();
+          ui.msgInput.value = "";
+        }
+      };
+
+      actionWrap.append(editBtn, deleteBtn);
+      div.appendChild(actionWrap);
+    }
 
     ui.messagesDiv.appendChild(div);
   });
@@ -469,7 +536,7 @@ onAuthStateChanged(auth, (user) => {
 
   onSnapshot(query(collection(db, "messages"), orderBy("createdAt")), (snap) => {
     allMessages = [];
-    snap.forEach((d) => allMessages.push(d.data()));
+    snap.forEach((d) => allMessages.push({ id: d.id, ...d.data() }));
     renderMessages();
   });
 
@@ -487,6 +554,11 @@ ui.msgInput.addEventListener("keydown", (event) => {
   if (event.key === "Enter") {
     event.preventDefault();
     document.getElementById("send").click();
+  }
+  if (event.key === "Escape" && editingMessageId) {
+    cancelEditMode();
+    ui.msgInput.value = "";
+    setStatus("編集モードを解除しました。", "info");
   }
 });
 
@@ -510,7 +582,25 @@ document.getElementById("addFriend").onclick = async () => {
 
 document.getElementById("send").onclick = async () => {
   if (!auth.currentUser) return;
-  if (!ui.msgInput.value.trim() && !ui.imageInput.files[0]) return;
+  const text = ui.msgInput.value.trim();
+
+  if (editingMessageId) {
+    if (!text) {
+      setStatus("編集メッセージは空にできません。", "error");
+      return;
+    }
+    await updateDoc(doc(db, "messages", editingMessageId), {
+      text,
+      editedAt: serverTimestamp()
+    });
+    cancelEditMode();
+    ui.msgInput.value = "";
+    ui.imageInput.value = "";
+    setStatus("メッセージを更新しました。", "success");
+    return;
+  }
+
+  if (!text && !ui.imageInput.files[0]) return;
 
   let imageBase64 = null;
   const file = ui.imageInput.files[0];
@@ -524,7 +614,7 @@ document.getElementById("send").onclick = async () => {
   }
 
   await addDoc(collection(db, "messages"), {
-    text: ui.msgInput.value.trim(),
+    text,
     image: imageBase64,
     name: auth.currentUser.displayName || (auth.currentUser.email || "匿名"),
     senderEmail: auth.currentUser.email || "",
