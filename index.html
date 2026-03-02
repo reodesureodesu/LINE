@@ -63,6 +63,27 @@ header {
   background: linear-gradient(180deg, #ffffff 0%, #fbfffd 100%);
 }
 
+#statusBar {
+  min-height: 38px;
+  padding: 9px 12px;
+  font-size: 0.85rem;
+  border-radius: 10px;
+  background: #eff6ff;
+  color: #1d4ed8;
+  display: none;
+  text-align: left;
+}
+
+#statusBar.error {
+  background: #fef2f2;
+  color: #b91c1c;
+}
+
+#statusBar.success {
+  background: #ecfdf5;
+  color: #047857;
+}
+
 #auth h2 {
   margin: 0 0 2px;
   font-size: 1.1rem;
@@ -79,6 +100,29 @@ header {
   flex: 1;
   flex-direction: column;
   background: linear-gradient(180deg, #f8fcff 0%, #f2fbf6 100%);
+}
+
+#toolbar {
+  display: flex;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  background: #fff;
+}
+
+#toolbar input {
+  padding: 8px 10px;
+}
+
+.message-meta {
+  display: block;
+  margin-top: 6px;
+  font-size: 0.72rem;
+  opacity: 0.75;
+}
+
+.hidden {
+  display: none !important;
 }
 
 #messages {
@@ -191,6 +235,31 @@ button:active {
 #aiBtn {
   background: #6366f1;
 }
+
+#themeToggle {
+  background: #111827;
+}
+
+body.dark {
+  --bg-gradient: linear-gradient(160deg, #0f172a 0%, #111827 60%, #1f2937 100%);
+  --surface: #111827;
+  --surface-soft: #1f2937;
+  --text-primary: #f9fafb;
+  --text-muted: #9ca3af;
+  --border: #374151;
+}
+
+body.dark #googleLogin,
+body.dark #toolbar,
+body.dark #inputArea {
+  background: #1f2937;
+  color: #f9fafb;
+}
+
+body.dark .other {
+  background: #1f2937;
+  color: #f9fafb;
+}
 </style>
 </head>
 <body>
@@ -200,14 +269,20 @@ button:active {
 <div id="auth">
   <h2>ログインしてチャットを始めましょう</h2>
   <p>Google またはメールアドレスでサインインできます。</p>
+  <div id="statusBar"></div>
   <button id="googleLogin">Googleログイン</button>
   <input id="email" placeholder="email" autocomplete="email">
   <input id="password" type="password" placeholder="password" autocomplete="current-password">
+  <input id="displayName" placeholder="表示名（任意）" autocomplete="nickname">
   <button id="register">新規登録</button>
   <button id="login">ログイン</button>
 </div>
 
 <div id="chat">
+  <div id="toolbar">
+    <input id="searchInput" placeholder="メッセージ検索...">
+    <button id="themeToggle">テーマ</button>
+  </div>
   <div id="messages"></div>
   <div id="inputArea">
     <input id="msg" placeholder="message">
@@ -225,7 +300,7 @@ button:active {
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, GoogleAuthProvider, signInWithPopup,
 createUserWithEmailAndPassword, signInWithEmailAndPassword,
-onAuthStateChanged, signOut }
+onAuthStateChanged, signOut, updateProfile }
 from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, collection, addDoc, onSnapshot,
 query, orderBy, serverTimestamp }
@@ -253,23 +328,103 @@ const chatDiv = document.getElementById("chat");
 const messagesDiv = document.getElementById("messages");
 const msgInput = document.getElementById("msg");
 const imageInput = document.getElementById("imageInput");
+const emailInput = document.getElementById("email");
+const passwordInput = document.getElementById("password");
+const displayNameInput = document.getElementById("displayName");
+const statusBar = document.getElementById("statusBar");
+const searchInput = document.getElementById("searchInput");
+
+const authErrorMessages = {
+  "auth/email-already-in-use": "このメールアドレスはすでに登録されています。ログインをお試しください。",
+  "auth/invalid-email": "メールアドレスの形式が正しくありません。",
+  "auth/missing-password": "パスワードを入力してください。",
+  "auth/weak-password": "パスワードは6文字以上で入力してください。",
+  "auth/invalid-credential": "メールアドレスまたはパスワードが正しくありません。",
+  "auth/popup-closed-by-user": "Googleログインがキャンセルされました。"
+};
+
+let allMessages = [];
+
+const formatTime = (value)=> {
+  const date = value?.toDate ? value.toDate() : null;
+  if(!date) return "送信中...";
+  return date.toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" });
+};
+
+const setStatus = (message, type="info")=>{
+  if(!message){
+    statusBar.style.display = "none";
+    statusBar.textContent = "";
+    statusBar.className = "";
+    return;
+  }
+  statusBar.textContent = message;
+  statusBar.style.display = "block";
+  statusBar.className = type;
+};
+
+const showAuthError = (error)=>{
+  const msg = authErrorMessages[error.code] || `認証エラーが発生しました (${error.code || "unknown"})`;
+  setStatus(msg, "error");
+};
+
+const renderMessages = (messages, user)=>{
+  const keyword = searchInput.value.trim().toLowerCase();
+  messagesDiv.innerHTML = "";
+
+  messages
+    .filter((item)=>!keyword || (item.text || "").toLowerCase().includes(keyword))
+    .forEach((data)=>{
+      const div=document.createElement("div");
+      div.className="msg "+(data.uid===user.uid?"me":"other");
+      div.textContent=data.text||"";
+
+      if(data.image){
+        const img=document.createElement("img");
+        img.src=data.image;
+        img.className="chatimg";
+        div.appendChild(img);
+      }
+
+      const meta = document.createElement("small");
+      meta.className = "message-meta";
+      meta.textContent = `${data.name || "匿名"}・${formatTime(data.createdAt)}`;
+      div.appendChild(meta);
+
+      messagesDiv.appendChild(div);
+    });
+
+  messagesDiv.scrollTop=messagesDiv.scrollHeight;
+};
 
 /* ログイン */
 document.getElementById("googleLogin").onclick =
-()=> signInWithPopup(auth,googleProvider);
+()=> signInWithPopup(auth,googleProvider)
+  .then(()=>setStatus("Googleでログインしました。", "success"))
+  .catch(showAuthError);
 
 document.getElementById("register").onclick = async()=>{
   try{
-    await createUserWithEmailAndPassword(auth,
-      email.value,password.value);
-  }catch(e){alert(e.message);}
+    setStatus("");
+    const credential = await createUserWithEmailAndPassword(auth,
+      emailInput.value,passwordInput.value);
+
+    if(displayNameInput.value.trim()){
+      await updateProfile(credential.user, {
+        displayName: displayNameInput.value.trim()
+      });
+    }
+    setStatus("新規登録に成功しました。", "success");
+  }catch(e){showAuthError(e);}
 };
 
 document.getElementById("login").onclick = async()=>{
   try{
+    setStatus("");
     await signInWithEmailAndPassword(auth,
-      email.value,password.value);
-  }catch(e){alert(e.message);}
+      emailInput.value,passwordInput.value);
+    setStatus("ログインに成功しました。", "success");
+  }catch(e){showAuthError(e);}
 };
 
 document.getElementById("logout").onclick =
@@ -290,29 +445,22 @@ onAuthStateChanged(auth,user=>{
     orderBy("createdAt"));
 
   onSnapshot(q,snap=>{
-    messagesDiv.innerHTML="";
-    snap.forEach(doc=>{
-      const data=doc.data();
-      const div=document.createElement("div");
-      div.className="msg "+(data.uid===user.uid?"me":"other");
-      div.innerHTML=data.text||"";
-
-      if(data.image){
-        const img=document.createElement("img");
-        img.src=data.image;
-        img.className="chatimg";
-        div.appendChild(img);
-      }
-
-      messagesDiv.appendChild(div);
-    });
-    messagesDiv.scrollTop=messagesDiv.scrollHeight;
+    allMessages = [];
+    snap.forEach((doc)=>allMessages.push(doc.data()));
+    renderMessages(allMessages, user);
   });
 });
+
+searchInput.oninput = ()=>{
+  if(auth.currentUser){
+    renderMessages(allMessages, auth.currentUser);
+  }
+};
 
 /* 送信 */
 document.getElementById("send").onclick=async()=>{
   if(!auth.currentUser)return;
+  if(!msgInput.value.trim() && !imageInput.files[0]) return;
 
   let imageBase64=null;
   const file=imageInput.files[0];
@@ -326,8 +474,9 @@ document.getElementById("send").onclick=async()=>{
   }
 
   await addDoc(collection(db,"messages"),{
-    text:msgInput.value,
+    text:msgInput.value.trim(),
     image:imageBase64,
+    name:auth.currentUser.displayName || emailInput.value || "匿名",
     uid:auth.currentUser.uid,
     createdAt:serverTimestamp()
   });
@@ -355,7 +504,18 @@ document.getElementById("aiBtn").onclick=async()=>{
   });
 
   const data=await res.json();
-  msgInput.value=data.choices[0].message.content;
+  msgInput.value=data.choices?.[0]?.message?.content || "AI応答を取得できませんでした";
+};
+
+msgInput.addEventListener("keydown", (event)=>{
+  if(event.key === "Enter"){
+    event.preventDefault();
+    document.getElementById("send").click();
+  }
+});
+
+document.getElementById("themeToggle").onclick = ()=>{
+  document.body.classList.toggle("dark");
 };
 </script>
 </body>
