@@ -739,6 +739,9 @@ let pendingIncomingCall = null;
 let incomingCallWatcher = null;
 let aiChatSession = null;
 let aiModel = null;
+let aiModelIndex = 0;
+let vertexAIInstance = null;
+const AI_MODEL_CANDIDATES = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"];
 
 const authErrorMessages = {
   "auth/email-already-in-use": "このメールアドレスはすでに登録されています。ログインをお試しください。",
@@ -2012,10 +2015,24 @@ document.getElementById("send").onclick = async () => {
   ui.imageInput.value = "";
 };
 
+const getCurrentAiModelName = () => AI_MODEL_CANDIDATES[Math.min(aiModelIndex, AI_MODEL_CANDIDATES.length - 1)];
+
+const buildAiModel = () => {
+  if (!vertexAIInstance) {
+    vertexAIInstance = getVertexAI(app);
+  }
+  aiModel = getGenerativeModel(vertexAIInstance, { model: getCurrentAiModelName() });
+  aiChatSession = null;
+};
+
+const isRetiredModelError = (error) => {
+  const text = `${error?.message || ""} ${error?.code || ""}`.toLowerCase();
+  return text.includes("retired_model") || text.includes("retired");
+};
+
 const getAiChatSession = () => {
   if (!aiModel) {
-    const vertexAI = getVertexAI(app);
-    aiModel = getGenerativeModel(vertexAI, { model: "gemini-1.5-flash" });
+    buildAiModel();
   }
   if (!aiChatSession) {
     aiChatSession = aiModel.startChat({
@@ -2030,6 +2047,29 @@ const getAiChatSession = () => {
   return aiChatSession;
 };
 
+const askAiWithFallback = async (text) => {
+  let lastError = null;
+  for (let i = aiModelIndex; i < AI_MODEL_CANDIDATES.length; i++) {
+    try {
+      if (!aiModel || i !== aiModelIndex) {
+        aiModelIndex = i;
+        buildAiModel();
+      }
+      const chat = getAiChatSession();
+      const result = await chat.sendMessage(text);
+      const answer = (result.response?.text?.() || "").trim();
+      return answer || "AI応答を取得できませんでした";
+    } catch (error) {
+      lastError = error;
+      if (isRetiredModelError(error) && i < AI_MODEL_CANDIDATES.length - 1) {
+        continue;
+      }
+      throw error;
+    }
+  }
+  throw lastError || new Error("AI model unavailable");
+};
+
 document.getElementById("aiBtn").onclick = async () => {
   const text = ui.msgInput.value.trim();
   if (!text) {
@@ -2038,10 +2078,8 @@ document.getElementById("aiBtn").onclick = async () => {
   }
 
   try {
-    setStatus("Firebase AI Logicで応答を生成中...", "info");
-    const chat = getAiChatSession();
-    const result = await chat.sendMessage(text);
-    const answer = (result.response?.text?.() || "").trim() || "AI応答を取得できませんでした";
+    setStatus(`Firebase AI Logicで応答を生成中... (${getCurrentAiModelName()})`, "info");
+    const answer = await askAiWithFallback(text);
 
     if (auth.currentUser) {
       await postMessage({ text: `🤖 ${answer}`, image: null, audio: null });
