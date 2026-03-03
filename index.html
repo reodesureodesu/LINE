@@ -621,9 +621,10 @@ body.dark .other { background: #1f2937; color: #f9fafb; }
 </div>
 
 <script type="module">
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getAuth, GoogleAuthProvider, signInWithPopup, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, signOut, updateProfile } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-import { getFirestore, collection, addDoc, onSnapshot, query, orderBy, serverTimestamp, doc, setDoc, deleteDoc, updateDoc, arrayUnion, where, getDocs, limit } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+import { getAuth, GoogleAuthProvider, signInWithPopup, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, signOut, updateProfile } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+import { getFirestore, collection, addDoc, onSnapshot, query, orderBy, serverTimestamp, doc, setDoc, deleteDoc, updateDoc, arrayUnion, where, getDocs, limit } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { getVertexAI, getGenerativeModel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-vertexai.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyDNUzhTrnAAUJye82vNZEy0Sgnj7e8IR9E",
@@ -736,6 +737,8 @@ const rtcConfig = { iceServers: [{ urls: ["stun:stun.l.google.com:19302"] }] };
 let activeCall = { id: null, pc: null, localStream: null, unsubscribers: [], isCaller: false };
 let pendingIncomingCall = null;
 let incomingCallWatcher = null;
+let aiChatSession = null;
+let aiModel = null;
 
 const authErrorMessages = {
   "auth/email-already-in-use": "このメールアドレスはすでに登録されています。ログインをお試しください。",
@@ -2009,24 +2012,48 @@ document.getElementById("send").onclick = async () => {
   ui.imageInput.value = "";
 };
 
+const getAiChatSession = () => {
+  if (!aiModel) {
+    const vertexAI = getVertexAI(app);
+    aiModel = getGenerativeModel(vertexAI, { model: "gemini-1.5-flash" });
+  }
+  if (!aiChatSession) {
+    aiChatSession = aiModel.startChat({
+      generationConfig: { maxOutputTokens: 512, temperature: 0.7 },
+      history: [],
+      systemInstruction: {
+        role: "system",
+        parts: [{ text: "あなたはLINE風チャットアプリの日本語アシスタントです。短く分かりやすく回答してください。" }]
+      }
+    });
+  }
+  return aiChatSession;
+};
+
 document.getElementById("aiBtn").onclick = async () => {
-  const text = ui.msgInput.value;
-  if (!text) return;
+  const text = ui.msgInput.value.trim();
+  if (!text) {
+    setStatus("AIに質問するメッセージを入力してください。", "error");
+    return;
+  }
 
-  const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": "org_01kjpzdja9fantcz1g0jmhare9"
-    },
-    body: JSON.stringify({
-      model: "gemma-7b-it",
-      messages: [{ role: "user", content: text }]
-    })
-  });
+  try {
+    setStatus("Firebase AI Logicで応答を生成中...", "info");
+    const chat = getAiChatSession();
+    const result = await chat.sendMessage(text);
+    const answer = (result.response?.text?.() || "").trim() || "AI応答を取得できませんでした";
 
-  const data = await res.json();
-  ui.msgInput.value = data.choices?.[0]?.message?.content || "AI応答を取得できませんでした";
+    if (auth.currentUser) {
+      await postMessage({ text: `🤖 ${answer}`, image: null, audio: null });
+      ui.msgInput.value = "";
+    } else {
+      ui.msgInput.value = answer;
+    }
+    setStatus("AI応答を送信しました。", "success");
+  } catch (error) {
+    console.error("firebase ai logic error", error);
+    setStatus("AI応答の生成に失敗しました。Firebase AI Logicの有効化と権限設定を確認してください。", "error");
+  }
 };
 </script>
 </body>
