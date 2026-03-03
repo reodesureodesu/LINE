@@ -3,11 +3,14 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#06c755">
+<link rel="manifest" href="./manifest.json">
+<link rel="icon" href="./icons/app-icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="./icons/app-icon.svg">
 <title>LINE Ultimate Stable</title>
 <style>
 :root {
   --line-green: #06c755;
-  --line-green-dark: #05ad4a;
   --bg-gradient: linear-gradient(160deg, #d8f9e8 0%, #e6f0ff 55%, #f3ecff 100%);
   --surface: #ffffff;
   --surface-soft: #f6f8fb;
@@ -15,11 +18,10 @@
   --text-muted: #6b7280;
   --border: #e5e7eb;
   --shadow: 0 16px 40px rgba(16, 24, 40, 0.14);
+  --msg-font-size: 18px;
 }
 
-* {
-  box-sizing: border-box;
-}
+* { box-sizing: border-box; }
 
 body {
   margin: 0;
@@ -34,55 +36,148 @@ body {
 }
 
 #app {
-  width: min(100%, 420px);
-  height: min(92vh, 760px);
+  --app-width: min(100%, 420px);
+  --app-height: min(92vh, 760px);
+  position: relative;
+  width: var(--app-width);
+  height: var(--app-height);
   background: var(--surface);
   border-radius: 28px;
   box-shadow: var(--shadow);
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.8);
 }
 
 header {
   background: linear-gradient(120deg, var(--line-green) 0%, #2cd56e 100%);
   color: white;
-  padding: 20px;
-  text-align: center;
-  font-weight: 700;
-  letter-spacing: 0.03em;
-  font-size: 1.05rem;
+  padding: 14px 12px;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 8px;
+  align-items: center;
+}
+
+#menuBtn, #themeToggle {
+  border-radius: 10px;
+  padding: 9px 10px;
+}
+
+#menuBtn { background: rgba(255,255,255,.24); }
+#themeToggle { background: #111827; }
+
+#sidebar {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: min(92%, 360px);
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  transform: translateX(-100%);
+  transition: transform 0.2s ease;
+  z-index: 9;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+#sidebar.open { transform: translateX(0); }
+
+#backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(15,23,42,.35);
+  z-index: 8;
+  display: none;
+}
+
+#backdrop.show { display: block; }
+
+#friendSearchInput {
+  min-height: 44px;
+}
+
+#friendList {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  overflow: auto;
+  display: grid;
+  gap: 10px;
+  max-height: none;
+  min-height: 150px;
+}
+
+.friend-item {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px;
+  background: var(--surface-soft);
+}
+
+.friend-item.active {
+  border-color: var(--line-green);
+  box-shadow: 0 0 0 2px rgba(6,199,85,0.2);
+}
+
+.friend-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.friend-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 4px;
+  max-width: 120px;
+}
+
+.friend-row button {
+  padding: 4px 8px;
+  border-radius: 8px;
+  font-size: 0.75rem;
+  background: #ef4444;
 }
 
 #auth {
-  padding: 28px 22px;
+  padding: 24px 20px;
   text-align: center;
   display: grid;
-  gap: 12px;
-  background: linear-gradient(180deg, #ffffff 0%, #fbfffd 100%);
+  gap: 10px;
 }
 
-#auth h2 {
-  margin: 0 0 2px;
-  font-size: 1.1rem;
-}
-
-#auth p {
-  margin: 0 0 12px;
-  color: var(--text-muted);
-  font-size: 0.92rem;
-}
-
-#chat {
+#statusBar {
+  min-height: 36px;
+  padding: 9px 12px;
+  font-size: 0.85rem;
+  border-radius: 10px;
+  background: #eff6ff;
+  color: #1d4ed8;
   display: none;
-  flex: 1;
-  flex-direction: column;
-  background: linear-gradient(180deg, #f8fcff 0%, #f2fbf6 100%);
+  text-align: left;
+}
+#statusBar.error { background: #fef2f2; color: #b91c1c; }
+#statusBar.success { background: #ecfdf5; color: #047857; }
+
+#chat { display: none; flex: 1; flex-direction: column; background: linear-gradient(180deg, #f8fcff 0%, #f2fbf6 100%); min-height: 0; overflow: hidden; }
+
+#toolbar {
+  display: flex;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  background: #fff;
 }
 
 #messages {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   padding: 16px 14px;
   display: flex;
@@ -97,139 +192,345 @@ header {
   max-width: 78%;
   word-break: break-word;
   line-height: 1.4;
+  font-size: var(--msg-font-size);
   box-shadow: 0 6px 14px rgba(15, 23, 42, 0.08);
 }
 
-.me {
+.me { background: var(--line-green); color: white; margin-left: auto; border-bottom-right-radius: 4px; }
+.other { background: #fff; color: var(--text-primary); margin-right: auto; border: 1px solid var(--border); border-bottom-left-radius: 4px; }
+
+.message-meta { display: block; margin-top: 6px; font-size: 0.72rem; opacity: 0.75; }
+.reply-quote { border-left: 3px solid #94a3b8; padding-left: 8px; margin: 4px 0 6px; font-size: 0.78rem; opacity: 0.9; }
+.unread-badge { display:inline-block; margin-left:6px; background:#ef4444; color:#fff; border-radius:999px; padding:1px 6px; font-size:0.66rem; }
+.chatimg { width: 100%; max-width: 190px; border-radius: 10px; margin-top: 8px; display: block; }
+
+.msg-actions {
+  margin-top: 8px;
+  display: flex;
+  gap: 6px;
+}
+
+.msg-actions button {
+  padding: 4px 8px;
+  border-radius: 8px;
+  font-size: 0.7rem;
+}
+
+.msg-edit { background: #0ea5e9; }
+.msg-delete { background: #ef4444; }
+
+#bottomBar {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+}
+
+
+#inputArea { display: grid; grid-template-columns: 1fr auto; gap: 8px; padding: 12px; background: var(--surface); }
+#imageInput,
+#profileImageInput,
+#backgroundImageInput { grid-column: 1 / -1; }
+#actions { display: flex; gap: 8px; }
+
+#stampBar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow-x: auto;
+  padding: 8px 12px 4px;
+  border-top: 1px dashed var(--border);
+  min-height: 46px;
+}
+
+.stamp-btn {
+  min-width: 44px;
+  height: 40px;
+  border-radius: 12px;
+  padding: 0;
+  font-size: 1.35rem;
+  background: #e5e7eb;
+  color: #111827;
+}
+
+.msg.stamp-only {
+  font-size: 2.4rem;
+  line-height: 1.05;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 4px 8px;
+  width: fit-content;
+  max-width: 100%;
+}
+
+.msg.stamp-only.me {
+  color: #111827;
+}
+
+.msg.stamp-only .message-meta {
+  font-size: 0.65rem;
+  opacity: 0.75;
+}
+
+
+.friend-badges {
+  display: flex;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.friend-badges small {
+  font-size: 0.65rem;
+  background: #e0f2fe;
+  color: #0369a1;
+  border-radius: 999px;
+  padding: 1px 6px;
+}
+
+input, button { font: inherit; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--border); }
+input { width: 100%; background: var(--surface-soft); }
+
+input[type="file"] {
+  width: 100%;
+  border: 1px solid #dfe6e3;
+  background: #f6faf8;
+  border-radius: 14px;
+  padding: 8px;
+  color: #374151;
+}
+
+input[type="file"]::file-selector-button {
+  border: none;
   background: var(--line-green);
   color: white;
-  margin-left: auto;
-  border-bottom-right-radius: 4px;
+  border-radius: 999px;
+  padding: 8px 14px;
+  margin-right: 10px;
+  font-weight: 700;
+  cursor: pointer;
 }
 
-.other {
-  background: #ffffff;
-  color: var(--text-primary);
-  margin-right: auto;
-  border: 1px solid var(--border);
-  border-bottom-left-radius: 4px;
+input[type="file"]::file-selector-button:hover {
+  opacity: 0.92;
+}
+button { background: var(--line-green); color: white; border: none; cursor: pointer; font-weight: 600; }
+#googleLogin { background: #fff; color: #111827; border: 1px solid #d1d5db; }
+#logout { margin: 0 12px 12px; background: #ef4444; }
+#aiBtn { background: #6366f1; }
+#recordBtn { background: #ef4444; }
+
+
+#notifyBtn {
+  position: relative;
+  background: #0f172a;
+  min-width: 44px;
 }
 
-.chatimg {
-  width: 100%;
-  max-width: 190px;
-  border-radius: 10px;
-  margin-top: 8px;
-  display: block;
+#notifyCount {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  background: #ef4444;
+  color: #fff;
+  border-radius: 999px;
+  font-size: 0.65rem;
+  padding: 1px 5px;
 }
 
-#inputArea {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 8px;
-  padding: 12px;
-  border-top: 1px solid var(--border);
+#notifyPanel {
+  position: absolute;
+  top: 70px;
+  right: 10px;
+  width: min(90%, 320px);
+  max-height: 60%;
+  overflow: auto;
   background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  z-index: 20;
+  padding: 10px;
+  display: none;
+  box-shadow: var(--shadow);
 }
 
-#imageInput {
-  grid-column: 1 / -1;
+.notify-item {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 8px;
+  margin-top: 8px;
+  background: var(--surface-soft);
 }
 
-#actions {
+.notify-item button { margin-top: 6px; padding: 6px 8px; border-radius: 8px; }
+
+#profileAvatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid rgba(255,255,255,.5);
+  background: rgba(255,255,255,.2);
+}
+
+#messages.custom-bg {
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+
+.sidebar-section {
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+}
+
+.inline-btn-row {
   display: flex;
   gap: 8px;
 }
 
-input,
-button {
-  font: inherit;
-  padding: 10px 12px;
-  border-radius: 12px;
-  border: 1px solid var(--border);
+.inline-btn-row button,
+.inline-btn-row input {
+  min-width: 0;
 }
 
-input {
-  width: 100%;
-  background: var(--surface-soft);
+#retryQueueBtn[disabled] {
+  opacity: .6;
+  cursor: not-allowed;
 }
 
-input:focus {
-  outline: 2px solid rgba(6, 199, 85, 0.25);
-  border-color: var(--line-green);
+body.dark {
+  --bg-gradient: linear-gradient(160deg, #0f172a 0%, #111827 60%, #1f2937 100%);
+  --surface: #111827;
+  --surface-soft: #1f2937;
+  --text-primary: #f9fafb;
+  --text-muted: #9ca3af;
+  --border: #374151;
 }
-
-button {
-  background: var(--line-green);
-  color: white;
-  border: none;
-  cursor: pointer;
-  font-weight: 600;
-  transition: transform 0.12s ease, opacity 0.12s ease, background 0.2s ease;
-}
-
-button:hover {
-  transform: translateY(-1px);
-  opacity: 0.96;
-}
-
-button:active {
-  transform: translateY(0);
-}
-
-#googleLogin {
-  background: #ffffff;
-  color: #111827;
-  border: 1px solid #d1d5db;
-}
-
-#logout {
-  margin: 0 12px 12px;
-  background: #ef4444;
-}
-
-#aiBtn {
-  background: #6366f1;
-}
+body.dark #toolbar, body.dark #inputArea, body.dark #googleLogin, body.dark #bottomBar, body.dark #stampBar { background: #1f2937; color: #f9fafb; }
+body.dark .other { background: #1f2937; color: #f9fafb; }
 </style>
 </head>
 <body>
 <div id="app">
-<header>LINE Ultimate</header>
+  <div id="backdrop"></div>
 
-<div id="auth">
-  <h2>ログインしてチャットを始めましょう</h2>
-  <p>Google またはメールアドレスでサインインできます。</p>
-  <button id="googleLogin">Googleログイン</button>
-  <input id="email" placeholder="email" autocomplete="email">
-  <input id="password" type="password" placeholder="password" autocomplete="current-password">
-  <button id="register">新規登録</button>
-  <button id="login">ログイン</button>
-</div>
-
-<div id="chat">
-  <div id="messages"></div>
-  <div id="inputArea">
-    <input id="msg" placeholder="message">
-    <div id="actions">
-      <button id="send">送信</button>
-      <button id="aiBtn">AI</button>
+  <aside id="sidebar">
+    <h3 style="margin:4px 0">フレンド</h3>
+    <div>
+      <input id="friendEmail" placeholder="friend@example.com">
+      <input id="friendName" placeholder="フレンド表示名（任意）" style="margin-top:8px">
+      <button id="addFriend" style="margin-top:8px;width:100%">メールでフレンド追加</button>
+      <input id="friendRequestName" placeholder="表示名でフレンド申請" style="margin-top:8px">
+      <button id="sendFriendRequest" style="margin-top:8px;width:100%;background:#6366f1">名前で申請を送る</button>
+      <button id="copyInviteLink" style="margin-top:8px;width:100%;background:#0ea5e9">URL招待リンクをコピー</button>
+      <button id="acceptInviteLink" style="margin-top:8px;width:100%;background:#7c3aed;display:none;">このURL招待を承認</button>
     </div>
-    <input type="file" id="imageInput" accept="image/*">
+    <input id="friendSearchInput" placeholder="フレンド検索" style="margin-top:8px">
+    <ul id="friendList"></ul>
+    <div class="sidebar-section">
+      <label for="customStampInput">カスタムスタンプ（画像/GIF）</label>
+      <input id="customStampInput" type="file" accept="image/*,.gif">
+      <button id="addCustomStamp" style="margin-top:8px;width:100%;background:#f97316">カスタムスタンプ追加</button>
+    </div>
+    <div class="sidebar-section">
+      <label for="profileImageInput">プロフィール画像（GIF可）</label>
+      <input id="profileImageInput" type="file" accept="image/*,.gif">
+      <label for="backgroundImageInput" style="margin-top:8px;display:block;">背景画像（GIF可）</label>
+      <input id="backgroundImageInput" type="file" accept="image/*,.gif">
+    </div>
+    <div class="sidebar-section">
+      <label for="fontSizeSlider">文字サイズスライドバー</label>
+      <input id="fontSizeSlider" type="range" min="14" max="24" value="18">
+    </div>
+    <div class="sidebar-section">
+      <label for="screenPreset">画面サイズ</label>
+      <select id="screenPreset" style="margin-top:8px;">
+        <option value="smartphone">スマホ</option>
+        <option value="tablet">タブレット</option>
+        <option value="pc">PC</option>
+        <option value="custom">カスタム</option>
+      </select>
+      <div class="inline-btn-row" style="margin-top:8px;">
+        <input id="customWidth" type="number" min="320" max="1200" placeholder="幅(px)">
+        <input id="customHeight" type="number" min="480" max="1200" placeholder="高さ(px)">
+      </div>
+      <button id="applyScreenSize" style="margin-top:8px;width:100%;background:#0ea5e9">サイズを適用</button>
+    </div>
+  </aside>
+
+  <header>
+    <button id="menuBtn">☰</button>
+    <strong id="appTitle" style="text-align:center;letter-spacing:.02em">LINE Ultimate</strong>
+    <div style="display:flex; gap:8px; justify-self:end; align-items:center;">
+      <button id="miniGameBtn" title="ミニゲーム">🎮</button>
+      <button id="installAppBtn" title="アプリをインストール" style="display:none;background:#2563eb;">⬇️</button>
+      <button id="notifyBtn">🔔<span id="notifyCount">0</span></button>
+      <img id="profileAvatar" alt="avatar">
+      <button id="themeToggle">テーマ</button>
+    </div>
+  </header>
+
+  <div id="notifyPanel"><div style="display:flex;justify-content:space-between;align-items:center;"><strong>通知ボックス</strong><button id="closeNotify">閉じる</button></div><div id="notifyList"></div><hr><strong>送信済み申請</strong><div id="sentRequestList"></div></div>
+
+  <div id="miniGamePanel" style="display:none;position:absolute;top:72px;right:12px;width:min(92%,300px);z-index:21;background:var(--surface);border:1px solid var(--border);border-radius:14px;box-shadow:var(--shadow);padding:12px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;">
+      <strong>ミニゲーム</strong>
+      <button id="closeMiniGame" style="background:#64748b;">閉じる</button>
+    </div>
+    <p style="margin:10px 0 8px;color:var(--text-muted);font-size:.85rem;">10秒以内にどれだけタップできるか！</p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+      <button id="startMiniGame" style="background:#06c755;">スタート</button>
+      <small id="miniGameTimer">残り: 10.0秒</small>
+      <small id="miniGameScore">スコア: 0</small>
+      <small id="miniGameBest">ベスト: 0</small>
+    </div>
+    <button id="tapMiniGame" style="margin-top:10px;width:100%;min-height:74px;font-size:1.1rem;background:#f59e0b;" disabled>タップ！</button>
   </div>
-  <button id="logout">ログアウト</button>
-</div>
+
+  <div id="auth">
+    <h2 style="margin:0">ログインしてチャットを始めましょう</h2>
+    <p style="margin:0;color:var(--text-muted)">Google またはメールアドレスでサインインできます。</p>
+    <div id="statusBar"></div>
+    <button id="googleLogin">Googleログイン</button>
+    <small id="authHint" style="display:block;color:var(--text-muted);margin-top:-4px;">※ Googleログインが失敗した場合はメールログインをお使いください。</small>
+    <input id="email" placeholder="email" autocomplete="email">
+    <input id="password" type="password" placeholder="password" autocomplete="current-password">
+    <input id="displayName" placeholder="表示名（初回のみ設定）" autocomplete="nickname">
+    <button id="register">新規登録</button>
+    <button id="login">ログイン</button>
+  </div>
+
+  <div id="chat">
+    <div id="toolbar">
+      <input id="searchInput" placeholder="メッセージ検索...">
+      <button id="copyInviteQuick" style="background:#0ea5e9">URLコピー</button>
+      <button id="retryQueueBtn" style="background:#f59e0b">再送</button>
+      <small id="chatMode" style="align-self:center;white-space:nowrap">全体</small>
+    </div>
+    <div id="messages"></div>
+    <div id="stampBar"></div>
+    <div id="bottomBar">
+      <div id="replyPreview" style="display:none;padding:8px 12px;border-bottom:1px solid var(--border);"></div>
+      <div id="inputArea">
+        <input id="msg" placeholder="message">
+        <div id="actions">
+          <button id="send">送信</button>
+          <button id="aiBtn">AI</button>
+          <button id="recordBtn">🎤録音</button>
+        </div>
+        <input type="file" id="imageInput" accept="image/*">
+      </div>
+      <button id="logout">ログアウト</button>
+    </div>
+  </div>
 </div>
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getAuth, GoogleAuthProvider, signInWithPopup,
-createUserWithEmailAndPassword, signInWithEmailAndPassword,
-onAuthStateChanged, signOut }
-from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-import { getFirestore, collection, addDoc, onSnapshot,
-query, orderBy, serverTimestamp }
-from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import { getAuth, GoogleAuthProvider, signInWithPopup, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, signOut, updateProfile } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+import { getFirestore, collection, addDoc, onSnapshot, query, orderBy, serverTimestamp, doc, setDoc, deleteDoc, updateDoc, arrayUnion, where, getDocs, limit } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyDNUzhTrnAAUJye82vNZEy0Sgnj7e8IR9E",
@@ -240,122 +541,1157 @@ const firebaseConfig = {
   appId: "1:35972275719:web:383fd1ac8a47ceca96d4a2"
 };
 
-const GEMMA_KEY = "AIzaSyDY0Jcd-72QPZlfOJAtUCYxeRrjHBvJRtQ";
-
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
-
 const googleProvider = new GoogleAuthProvider();
 
-const authDiv = document.getElementById("auth");
-const chatDiv = document.getElementById("chat");
-const messagesDiv = document.getElementById("messages");
-const msgInput = document.getElementById("msg");
-const imageInput = document.getElementById("imageInput");
+const APP_DISPLAY_NAME = "LINE Ultimate"; // ←ここを書き換えると画面名を変更できます
 
-/* ログイン */
-document.getElementById("googleLogin").onclick =
-()=> signInWithPopup(auth,googleProvider);
-
-document.getElementById("register").onclick = async()=>{
-  try{
-    await createUserWithEmailAndPassword(auth,
-      email.value,password.value);
-  }catch(e){alert(e.message);}
+const ui = {
+  authDiv: document.getElementById("auth"),
+  chatDiv: document.getElementById("chat"),
+  messagesDiv: document.getElementById("messages"),
+  statusBar: document.getElementById("statusBar"),
+  googleLoginBtn: document.getElementById("googleLogin"),
+  authHint: document.getElementById("authHint"),
+  emailInput: document.getElementById("email"),
+  passwordInput: document.getElementById("password"),
+  displayNameInput: document.getElementById("displayName"),
+  msgInput: document.getElementById("msg"),
+  imageInput: document.getElementById("imageInput"),
+  profileImageInput: document.getElementById("profileImageInput"),
+  backgroundImageInput: document.getElementById("backgroundImageInput"),
+  profileAvatar: document.getElementById("profileAvatar"),
+  searchInput: document.getElementById("searchInput"),
+  chatMode: document.getElementById("chatMode"),
+  sidebar: document.getElementById("sidebar"),
+  backdrop: document.getElementById("backdrop"),
+  friendEmail: document.getElementById("friendEmail"),
+  friendName: document.getElementById("friendName"),
+  friendRequestName: document.getElementById("friendRequestName"),
+  friendSearchInput: document.getElementById("friendSearchInput"),
+  friendList: document.getElementById("friendList"),
+  stampBar: document.getElementById("stampBar"),
+  notifyBtn: document.getElementById("notifyBtn"),
+  notifyCount: document.getElementById("notifyCount"),
+  notifyPanel: document.getElementById("notifyPanel"),
+  appTitle: document.getElementById("appTitle"),
+  miniGameBtn: document.getElementById("miniGameBtn"),
+  miniGamePanel: document.getElementById("miniGamePanel"),
+  closeMiniGame: document.getElementById("closeMiniGame"),
+  startMiniGame: document.getElementById("startMiniGame"),
+  tapMiniGame: document.getElementById("tapMiniGame"),
+  miniGameTimer: document.getElementById("miniGameTimer"),
+  miniGameScore: document.getElementById("miniGameScore"),
+  miniGameBest: document.getElementById("miniGameBest"),
+  installAppBtn: document.getElementById("installAppBtn"),
+  notifyList: document.getElementById("notifyList"),
+  sentRequestList: document.getElementById("sentRequestList"),
+  replyPreview: document.getElementById("replyPreview"),
+  copyInviteLink: document.getElementById("copyInviteLink"),
+  copyInviteQuick: document.getElementById("copyInviteQuick"),
+  acceptInviteLink: document.getElementById("acceptInviteLink"),
+  customStampInput: document.getElementById("customStampInput"),
+  addCustomStamp: document.getElementById("addCustomStamp"),
+  fontSizeSlider: document.getElementById("fontSizeSlider"),
+  retryQueueBtn: document.getElementById("retryQueueBtn"),
+  screenPreset: document.getElementById("screenPreset"),
+  customWidth: document.getElementById("customWidth"),
+  customHeight: document.getElementById("customHeight"),
+  applyScreenSize: document.getElementById("applyScreenSize")
 };
 
-document.getElementById("login").onclick = async()=>{
-  try{
-    await signInWithEmailAndPassword(auth,
-      email.value,password.value);
-  }catch(e){alert(e.message);}
+let allMessages = [];
+let friends = [];
+let selectedFriendEmail = "";
+let editingMessageId = null;
+let mediaRecorder = null;
+let recordingStream = null;
+let userSettings = { profileImage: "", backgroundImage: "" };
+let notifications = [];
+let sentRequests = [];
+let replyingTo = null;
+let failedQueue = JSON.parse(localStorage.getItem("line_failed_queue") || "[]");
+let customStamps = [];
+const inviteParams = new URLSearchParams(window.location.search);
+const screenSizePresets = {
+  smartphone: { width: "min(100%, 420px)", height: "min(92vh, 760px)" },
+  tablet: { width: "min(100%, 768px)", height: "min(92vh, 980px)" },
+  pc: { width: "min(100%, 1100px)", height: "min(92vh, 900px)" }
+};
+let screenSettings = JSON.parse(localStorage.getItem("line_screen_settings") || '{"preset":"smartphone","customWidth":420,"customHeight":760}');
+let deferredInstallPrompt = null;
+let miniGame = {
+  running: false,
+  timeLeft: 10,
+  score: 0,
+  timerId: null,
+  best: Number(localStorage.getItem("line_minigame_best") || 0)
 };
 
-document.getElementById("logout").onclick =
-()=> signOut(auth);
+const authErrorMessages = {
+  "auth/email-already-in-use": "このメールアドレスはすでに登録されています。ログインをお試しください。",
+  "auth/invalid-email": "メールアドレスの形式が正しくありません。",
+  "auth/missing-password": "パスワードを入力してください。",
+  "auth/weak-password": "パスワードは6文字以上で入力してください。",
+  "auth/invalid-credential": "メールアドレスまたはパスワードが正しくありません。",
+  "auth/popup-closed-by-user": "Googleログインがキャンセルされました。",
+  "auth/unauthorized-domain": "このURLはGoogleログインの許可ドメインに未登録です。メールログインを使うか、Firebase Consoleで現在のドメインを追加してください。"
+};
 
-/* 認証監視 */
-onAuthStateChanged(auth,user=>{
-  if(!user){
-    authDiv.style.display="grid";
-    chatDiv.style.display="none";
+const friendDocId = (email) => encodeURIComponent(email.trim().toLowerCase());
+const safeText = (value="") => value.replace(/[<>]/g, "");
+const STAMPS = ["😀","😂","🥺","😍","😭","👍","🙏","🔥","🎉","💯","😎","🤔","🥳","🙌","🌸","❤️","💚","💙","🫶","😇","😴","🥲","😡","👏","✨","🍀","🍣","🍜","☕","🐱","🐶","🎮","📚","🎵","🚀","⚽","💡","🧋","🍓","🌈"];
+
+const toMillis = (value) => {
+  const date = value?.toDate ? value.toDate() : null;
+  return date ? date.getTime() : 0;
+};
+
+const normalizeEmail = (email = "") => email.trim().toLowerCase();
+const buildConversationId = (a, b) => [normalizeEmail(a), normalizeEmail(b)].sort().join("__");
+
+const updateRetryButton = () => {
+  ui.retryQueueBtn.textContent = `再送 (${failedQueue.length})`;
+  ui.retryQueueBtn.disabled = failedQueue.length === 0;
+};
+
+const copyText = async (text) => {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch (_error) {
+    const fallback = window.prompt("コピーできなかったため、下記URLを手動でコピーしてください", text);
+    return fallback !== null;
+  }
+};
+
+const applyScreenSize = (settings) => {
+  const preset = settings?.preset || "smartphone";
+  if (preset === "custom") {
+    const width = Math.max(320, Math.min(1200, Number(settings.customWidth) || 420));
+    const height = Math.max(480, Math.min(1200, Number(settings.customHeight) || 760));
+    document.getElementById("app").style.setProperty("--app-width", `min(100%, ${width}px)`);
+    document.getElementById("app").style.setProperty("--app-height", `min(92vh, ${height}px)`);
+  } else {
+    const target = screenSizePresets[preset] || screenSizePresets.smartphone;
+    document.getElementById("app").style.setProperty("--app-width", target.width);
+    document.getElementById("app").style.setProperty("--app-height", target.height);
+  }
+};
+
+const syncScreenControls = () => {
+  const preset = screenSettings?.preset || "smartphone";
+  ui.screenPreset.value = preset;
+  ui.customWidth.value = String(screenSettings?.customWidth || 420);
+  ui.customHeight.value = String(screenSettings?.customHeight || 760);
+  const enabled = preset === "custom";
+  ui.customWidth.disabled = !enabled;
+  ui.customHeight.disabled = !enabled;
+};
+
+const persistScreenSettings = () => {
+  localStorage.setItem("line_screen_settings", JSON.stringify(screenSettings));
+};
+
+const updateMiniGameView = () => {
+  ui.miniGameTimer.textContent = `残り: ${miniGame.timeLeft.toFixed(1)}秒`;
+  ui.miniGameScore.textContent = `スコア: ${miniGame.score}`;
+  ui.miniGameBest.textContent = `ベスト: ${miniGame.best}`;
+};
+
+const endMiniGame = () => {
+  miniGame.running = false;
+  if (miniGame.timerId) {
+    clearInterval(miniGame.timerId);
+    miniGame.timerId = null;
+  }
+  ui.tapMiniGame.disabled = true;
+  if (miniGame.score > miniGame.best) {
+    miniGame.best = miniGame.score;
+    localStorage.setItem("line_minigame_best", String(miniGame.best));
+    setStatus(`新記録！${miniGame.score} タップ`, "success");
+  } else {
+    setStatus(`ミニゲーム終了: ${miniGame.score} タップ`, "info");
+  }
+  updateMiniGameView();
+};
+
+const startMiniGame = () => {
+  miniGame.running = true;
+  miniGame.timeLeft = 10;
+  miniGame.score = 0;
+  ui.tapMiniGame.disabled = false;
+  updateMiniGameView();
+  if (miniGame.timerId) clearInterval(miniGame.timerId);
+  miniGame.timerId = setInterval(() => {
+    miniGame.timeLeft = Math.max(0, miniGame.timeLeft - 0.1);
+    updateMiniGameView();
+    if (miniGame.timeLeft <= 0) endMiniGame();
+  }, 100);
+};
+
+const initInstallSupport = () => {
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.register("./sw.js").catch((error) => {
+      console.warn("service worker register failed", error);
+    });
+  }
+  window.addEventListener("beforeinstallprompt", (event) => {
+    event.preventDefault();
+    deferredInstallPrompt = event;
+    ui.installAppBtn.style.display = "inline-block";
+  });
+  window.addEventListener("appinstalled", () => {
+    deferredInstallPrompt = null;
+    ui.installAppBtn.style.display = "none";
+    setStatus("アプリをインストールしました。", "success");
+  });
+};
+
+const setStatus = (message, type="info") => {
+
+  if (!message) {
+    ui.statusBar.style.display = "none";
+    ui.statusBar.textContent = "";
+    ui.statusBar.className = "";
+    return;
+  }
+  ui.statusBar.style.display = "block";
+  ui.statusBar.textContent = message;
+  ui.statusBar.className = type;
+};
+
+const showAuthError = (error) => {
+  if (error?.code === "auth/unauthorized-domain") {
+    ui.googleLoginBtn.disabled = true;
+    ui.googleLoginBtn.textContent = "Googleログイン不可";
+    ui.authHint.textContent = `現在のホスト(${location.hostname})はGoogleログイン許可が必要です。メールログインは利用できます。`;
+  }
+  const msg = authErrorMessages[error.code] || `認証エラーが発生しました (${error.code || "unknown"})`;
+  setStatus(msg, "error");
+};
+
+
+const fileToDataUrl = (file) => new Promise((resolve) => {
+  const reader = new FileReader();
+  reader.onload = () => resolve(reader.result);
+  reader.readAsDataURL(file);
+});
+
+const compressImageFile = async (file, maxSize = 1280, quality = 0.82) => {
+  if (!file || !file.type.startsWith("image/") || file.type === "image/gif") return file;
+  const imgUrl = await fileToDataUrl(file);
+  const img = new Image();
+  await new Promise((resolve) => { img.onload = resolve; img.src = imgUrl; });
+  const scale = Math.min(1, maxSize / Math.max(img.width, img.height));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(img.width * scale);
+  canvas.height = Math.round(img.height * scale);
+  const ctx = canvas.getContext("2d");
+  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+  const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", quality));
+  return new File([blob], file.name.replace(/\.[^.]+$/, ".jpg"), { type: "image/jpeg" });
+};
+
+const playPopSound = () => {
+  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContextClass) return;
+  const ctx = new AudioContextClass();
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = "square";
+  osc.frequency.setValueAtTime(980, ctx.currentTime);
+  osc.frequency.exponentialRampToValueAtTime(520, ctx.currentTime + 0.05);
+  gain.gain.setValueAtTime(0.0001, ctx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.18, ctx.currentTime + 0.006);
+  gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.09);
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+  osc.start();
+  osc.stop(ctx.currentTime + 0.12);
+  setTimeout(() => ctx.close(), 200);
+};
+
+const canSendToCurrentFriend = () => {
+  const currentFriend = friends.find((friend) => friend.email === selectedFriendEmail);
+  if (selectedFriendEmail && currentFriend?.blocked) {
+    setStatus("ブロック中のフレンドには送信できません。", "error");
+    return false;
+  }
+  return true;
+};
+
+const buildMessagePayload = ({ text = "", image = null, audio = null, stampImage = null, replyToId = null, replyToText = null, replyToName = null }) => ({
+  text,
+  image,
+  audio,
+  stampImage,
+  name: auth.currentUser.displayName || (auth.currentUser.email || "匿名"),
+  senderEmail: auth.currentUser.email || "",
+  targetEmail: selectedFriendEmail || null,
+  conversationId: selectedFriendEmail ? buildConversationId(auth.currentUser.email || "", selectedFriendEmail) : null,
+  uid: auth.currentUser.uid,
+  createdAt: serverTimestamp(),
+  readByIds: [auth.currentUser.uid],
+  replyToId,
+  replyToText,
+  replyToName
+});
+
+const persistFailedQueue = () => {
+  localStorage.setItem("line_failed_queue", JSON.stringify(failedQueue.slice(-50)));
+  updateRetryButton();
+};
+
+const enqueueFailed = (payload) => {
+  failedQueue.push({
+    id: crypto.randomUUID(),
+    payload,
+    createdAt: Date.now()
+  });
+  persistFailedQueue();
+};
+
+const postMessage = async (payload, skipQueue=false) => {
+  try {
+    await addDoc(collection(db, "messages"), buildMessagePayload(payload));
+    if (selectedFriendEmail) {
+      await setDoc(doc(db, "users", auth.currentUser.uid, "friends", friendDocId(selectedFriendEmail)), {
+        lastChattedAt: serverTimestamp()
+      }, { merge: true });
+    }
+    playPopSound();
+    return true;
+  } catch (error) {
+    if (!skipQueue) {
+      enqueueFailed(payload);
+      setStatus("送信に失敗したため再送キューに保存しました。", "error");
+    }
+    return false;
+  }
+};
+
+const retryFailedQueue = async () => {
+  if (!failedQueue.length) {
+    setStatus("再送キューは空です。", "info");
+    updateRetryButton();
+    return;
+  }
+  ui.retryQueueBtn.disabled = true;
+  ui.retryQueueBtn.textContent = "再送中...";
+  const remaining = [];
+  for (const item of failedQueue) {
+    const ok = await postMessage(item.payload, true);
+    if (!ok) remaining.push(item);
+  }
+  failedQueue = remaining;
+  persistFailedQueue();
+  setStatus(remaining.length ? `再送完了（一部失敗 ${remaining.length} 件）` : "再送キューを送信しました。", remaining.length ? "error" : "success");
+};
+
+const setReplyTarget = (message) => {
+  replyingTo = message;
+  ui.replyPreview.style.display = "block";
+  ui.replyPreview.innerHTML = `返信先: <strong>${safeText(message.name || "匿名")}</strong> ${safeText((message.text || "").slice(0, 40))} <button id="cancelReply" style="background:#64748b;margin-left:8px;">×</button>`;
+  document.getElementById("cancelReply").onclick = () => {
+    replyingTo = null;
+    ui.replyPreview.style.display = "none";
+    ui.replyPreview.innerHTML = "";
+  };
+};
+
+const applyUserSettings = () => {
+  if (userSettings.profileImage) {
+    ui.profileAvatar.src = userSettings.profileImage;
+  } else {
+    ui.profileAvatar.removeAttribute("src");
+  }
+
+  if (userSettings.backgroundImage) {
+    ui.messagesDiv.style.backgroundImage = `url(${userSettings.backgroundImage})`;
+    ui.messagesDiv.classList.add("custom-bg");
+  } else {
+    ui.messagesDiv.style.backgroundImage = "";
+    ui.messagesDiv.classList.remove("custom-bg");
+  }
+};
+
+const formatTime = (value) => {
+  const date = value?.toDate ? value.toDate() : null;
+  if (!date) return "送信中...";
+  return date.toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" });
+};
+
+const renderNotifications = () => {
+  ui.notifyList.innerHTML = "";
+  ui.notifyCount.textContent = String(notifications.filter((n) => n.status === "pending").length);
+  notifications.forEach((notice) => {
+    const div = document.createElement("div");
+    div.className = "notify-item";
+    div.innerHTML = `<div><strong>${safeText(notice.fromName || "不明")}</strong> さんからフレンド申請</div><small>${safeText(notice.fromEmail || "")}</small>`;
+
+    if (notice.status === "pending") {
+      const accept = document.createElement("button");
+      accept.textContent = "承認して会話開始";
+      accept.style.background = "#06c755";
+      accept.onclick = async () => {
+        if (!auth.currentUser) return;
+        await setDoc(doc(db, "users", auth.currentUser.uid, "friends", friendDocId(notice.fromEmail)), {
+          uid: notice.fromUid || null,
+          email: normalizeEmail(notice.fromEmail),
+          name: notice.fromName || notice.fromEmail?.split("@")[0] || "friend",
+          favorite: false,
+          blocked: false,
+          createdAt: serverTimestamp()
+        }, { merge: true });
+        await setDoc(doc(db, "users", notice.fromUid, "friends", friendDocId(auth.currentUser.email || "")), {
+          uid: auth.currentUser.uid,
+          email: normalizeEmail(auth.currentUser.email || ""),
+          name: auth.currentUser.displayName || userSettings.fixedName || (auth.currentUser.email || "").split("@")[0],
+          favorite: false,
+          blocked: false,
+          createdAt: serverTimestamp()
+        }, { merge: true });
+        await updateDoc(doc(db, "users", auth.currentUser.uid, "notifications", notice.id), { status: "accepted", acceptedAt: serverTimestamp() });
+      };
+      const reject = document.createElement("button");
+      reject.textContent = "拒否";
+      reject.style.background = "#ef4444";
+      reject.onclick = async () => {
+        if (!auth.currentUser) return;
+        await updateDoc(doc(db, "users", auth.currentUser.uid, "notifications", notice.id), { status: "rejected", rejectedAt: serverTimestamp() });
+      };
+      div.append(accept, reject);
+    } else {
+      const done = document.createElement("small");
+      done.textContent = "承認済み";
+      div.appendChild(done);
+    }
+    ui.notifyList.appendChild(div);
+  });
+
+  ui.sentRequestList.innerHTML = "";
+  sentRequests.forEach((req) => {
+    const row = document.createElement("div");
+    row.className = "notify-item";
+    row.innerHTML = `<div>${safeText(req.toName || req.toUid || "unknown")} へ申請</div><small>${safeText(req.status || "pending")}</small>`;
+    if (req.status === "pending") {
+      const cancel = document.createElement("button");
+      cancel.textContent = "取り消し";
+      cancel.style.background = "#64748b";
+      cancel.onclick = async () => {
+        if (!auth.currentUser) return;
+        await updateDoc(doc(db, "users", auth.currentUser.uid, "sentRequests", req.id), { status: "canceled", canceledAt: serverTimestamp() });
+      };
+      row.appendChild(cancel);
+    }
+    ui.sentRequestList.appendChild(row);
+  });
+};
+
+const ensureFixedDisplayName = async (user) => {
+  if (!user) return;
+  const candidate = (ui.displayNameInput.value || user.displayName || user.email?.split("@")[0] || "ユーザー").trim();
+  if (!userSettings.fixedName) {
+    await setDoc(doc(db, "users", user.uid), { fixedName: candidate }, { merge: true });
+  }
+  ui.displayNameInput.disabled = true;
+  ui.displayNameInput.value = userSettings.fixedName || candidate;
+};
+
+const openSidebar = () => {
+  if (!auth.currentUser) {
+    setStatus("ログイン後にサイドバーを利用できます。", "error");
+    return;
+  }
+  ui.sidebar.classList.add("open");
+  ui.backdrop.classList.add("show");
+};
+
+const closeSidebar = () => {
+  ui.sidebar.classList.remove("open");
+  ui.backdrop.classList.remove("show");
+};
+
+const renderStampBar = () => {
+  ui.stampBar.innerHTML = "";
+  STAMPS.forEach((stamp) => {
+    const btn = document.createElement("button");
+    btn.className = "stamp-btn";
+    btn.textContent = stamp;
+    btn.onclick = async () => {
+      if (!auth.currentUser) {
+        setStatus("スタンプ送信にはログインが必要です。", "error");
+        return;
+      }
+      if (!canSendToCurrentFriend()) return;
+      await postMessage({ text: stamp, image: null, audio: null });
+    };
+    ui.stampBar.appendChild(btn);
+  });
+
+  customStamps.forEach((stampUrl) => {
+    const btn = document.createElement("button");
+    btn.className = "stamp-btn";
+    btn.style.padding = "2px";
+    btn.innerHTML = `<img src="${stampUrl}" style="width:100%;height:100%;object-fit:cover;border-radius:10px;">`;
+    btn.onclick = async () => {
+      if (!auth.currentUser) return;
+      if (!canSendToCurrentFriend()) return;
+      await postMessage({ text: "", image: null, audio: null, stampImage: stampUrl });
+    };
+    ui.stampBar.appendChild(btn);
+  });
+};
+
+const markMessagesAsRead = async (messages, user) => {
+  for (const msg of messages) {
+    if (!msg?.id || msg.uid === user.uid) continue;
+    const ids = Array.isArray(msg.readByIds) ? msg.readByIds : [];
+    if (ids.includes(user.uid)) continue;
+    try {
+      await updateDoc(doc(db, "messages", msg.id), { readByIds: arrayUnion(user.uid) });
+      msg.readByIds = [...ids, user.uid];
+    } catch (error) {
+      console.warn("read receipt update failed", error);
+    }
+  }
+};
+
+const renderFriends = () => {
+  ui.friendList.innerHTML = "";
+  const keyword = (ui.friendSearchInput?.value || "").trim().toLowerCase();
+
+  const globalItem = document.createElement("li");
+  globalItem.className = `friend-item ${selectedFriendEmail ? "" : "active"}`;
+  const globalUnread = allMessages.filter((msg) => !normalizeEmail(msg.targetEmail || "") && msg.uid !== (auth.currentUser?.uid || "") && !(Array.isArray(msg.readByIds) ? msg.readByIds : []).includes(auth.currentUser?.uid || "")).length;
+  globalItem.innerHTML = `<div class="friend-row"><strong>全体チャット ${globalUnread ? `<span class="unread-badge">${globalUnread}</span>` : ""}</strong><button style="background:#0ea5e9">選択</button></div>`;
+  globalItem.querySelector("button").onclick = () => {
+    selectedFriendEmail = "";
+    renderFriends();
+    renderMessages();
+  };
+  ui.friendList.appendChild(globalItem);
+
+  const meUid = auth.currentUser?.uid || "";
+  const meEmail = normalizeEmail(auth.currentUser?.email || "");
+  const friendUnread = {};
+  for (const msg of allMessages) {
+    const target = normalizeEmail(msg.targetEmail || "");
+    const sender = normalizeEmail(msg.senderEmail || "");
+    if (!target) continue;
+    if (target !== meEmail) continue;
+    if (msg.uid === meUid) continue;
+    const ids = Array.isArray(msg.readByIds) ? msg.readByIds : [];
+    if (ids.includes(meUid)) continue;
+    friendUnread[sender] = (friendUnread[sender] || 0) + 1;
+  }
+
+  const sortedFriends = [...friends]
+    .sort((a, b) => Number(Boolean(b.favorite)) - Number(Boolean(a.favorite)) || (toMillis(b.lastChattedAt) - toMillis(a.lastChattedAt)));
+
+  sortedFriends
+    .filter((friend) => {
+      if (!keyword) return true;
+      return (friend.email || "").toLowerCase().includes(keyword) || (friend.name || "").toLowerCase().includes(keyword);
+    })
+    .forEach((friend) => {
+      const li = document.createElement("li");
+      const friendEmail = normalizeEmail(friend.email || "");
+      li.className = `friend-item ${selectedFriendEmail === friendEmail ? "active" : ""}`;
+      const unread = friendUnread[friendEmail] || 0;
+      li.innerHTML = `<div class="friend-row"><div><strong>${safeText(friend.name || "Friend")}</strong>${unread ? `<span class="unread-badge">${unread}</span>` : ""}<br><small>${safeText(friendEmail || "(メール未設定)")}</small><div class="friend-badges">${friend.favorite ? "<small>お気に入り</small>" : ""}${friend.blocked ? "<small>ブロック中</small>" : ""}</div></div><div class="friend-actions"><button class="select">選択</button><button class="favorite">★</button><button class="rename">名前</button><button class="block">🚫</button><button class="delete">削除</button></div></div>`;
+      li.querySelector(".select").style.background = "#0ea5e9";
+      li.querySelector(".select").onclick = () => {
+        selectedFriendEmail = friendEmail;
+        renderFriends();
+        renderMessages();
+        closeSidebar();
+      };
+      li.querySelector(".favorite").style.background = friend.favorite ? "#f59e0b" : "#64748b";
+      li.querySelector(".favorite").onclick = async () => {
+        if (!auth.currentUser) return;
+        await setDoc(doc(db, "users", auth.currentUser.uid, "friends", friendDocId(friendEmail)), {
+          favorite: !friend.favorite,
+          updatedAt: serverTimestamp()
+        }, { merge: true });
+      };
+      li.querySelector(".rename").style.background = "#6366f1";
+      li.querySelector(".rename").onclick = async () => {
+        if (!auth.currentUser) return;
+        const nextName = prompt("フレンド表示名を入力してください", friend.name || "");
+        if (nextName === null) return;
+        await setDoc(doc(db, "users", auth.currentUser.uid, "friends", friendDocId(friendEmail)), {
+          email: friendEmail,
+          name: nextName.trim() || (friendEmail.split("@")[0] || "friend"),
+          updatedAt: serverTimestamp()
+        }, { merge: true });
+      };
+      li.querySelector(".block").style.background = friend.blocked ? "#991b1b" : "#475569";
+      li.querySelector(".block").onclick = async () => {
+        if (!auth.currentUser) return;
+        await setDoc(doc(db, "users", auth.currentUser.uid, "friends", friendDocId(friendEmail)), {
+          blocked: !friend.blocked,
+          updatedAt: serverTimestamp()
+        }, { merge: true });
+      };
+      li.querySelector(".delete").onclick = async () => {
+        if (!auth.currentUser) return;
+        await deleteDoc(doc(db, "users", auth.currentUser.uid, "friends", friendDocId(friendEmail)));
+      };
+      ui.friendList.appendChild(li);
+    });
+};
+
+const filteredMessages = (applyKeyword = true) => {
+  if (!auth.currentUser) return [];
+  const me = normalizeEmail(auth.currentUser.email || "");
+  const keyword = applyKeyword ? ui.searchInput.value.trim().toLowerCase() : "";
+
+  return allMessages
+    .filter((msg) => {
+      const sender = normalizeEmail(msg.senderEmail || "");
+      const target = normalizeEmail(msg.targetEmail || "");
+      if (selectedFriendEmail) {
+        const friend = normalizeEmail(selectedFriendEmail);
+        const convId = buildConversationId(me, friend);
+        const inConv = msg.conversationId ? msg.conversationId === convId : ((sender === me && target === friend) || (sender === friend && target === me));
+        return inConv;
+      }
+      return !target;
+    })
+    .filter((msg) => !keyword || (msg.text || "").toLowerCase().includes(keyword));
+};
+
+const startEditMessage = (message) => {
+  if (!message || !message.id) return;
+  editingMessageId = message.id;
+  ui.msgInput.value = message.text || "";
+  document.getElementById("send").textContent = "更新";
+  ui.msgInput.focus();
+  setStatus("編集モード: テキストを修正して更新を押してください。", "info");
+};
+
+const cancelEditMode = () => {
+  editingMessageId = null;
+  document.getElementById("send").textContent = "送信";
+};
+
+const renderMessages = () => {
+  const user = auth.currentUser;
+  if (!user) return;
+
+  const wasNearBottom = ui.messagesDiv.scrollHeight - ui.messagesDiv.scrollTop - ui.messagesDiv.clientHeight < 90;
+  ui.messagesDiv.innerHTML = "";
+  if (selectedFriendEmail) {
+    const friend = friends.find((item) => normalizeEmail(item.email) === normalizeEmail(selectedFriendEmail));
+    ui.chatMode.textContent = `1:1 ${friend?.name || selectedFriendEmail}`;
+  } else {
+    ui.chatMode.textContent = "全体";
+  }
+
+  const visibleMessages = filteredMessages(true);
+  const readTargetMessages = filteredMessages(false);
+  visibleMessages.forEach((data) => {
+    const div = document.createElement("div");
+    const isStampOnly = !!(data.text && STAMPS.includes((data.text || "").trim()) && !data.image && !data.audio);
+    div.className = "msg " + (data.uid === user.uid ? "me" : "other") + (isStampOnly ? " stamp-only" : "");
+    div.textContent = data.text || "";
+
+    if (data.replyToText) {
+      const quote = document.createElement("div");
+      quote.className = "reply-quote";
+      quote.textContent = `↪ ${data.replyToName || "匿名"}: ${data.replyToText}`;
+      div.prepend(quote);
+    }
+
+    if (data.stampImage) {
+      const simg = document.createElement("img");
+      simg.src = data.stampImage;
+      simg.className = "chatimg";
+      simg.style.maxWidth = "120px";
+      div.appendChild(simg);
+    }
+
+    if (data.image) {
+      const img = document.createElement("img");
+      img.src = data.image;
+      img.className = "chatimg";
+      div.appendChild(img);
+    }
+
+    if (data.audio) {
+      const audio = document.createElement("audio");
+      audio.src = data.audio;
+      audio.controls = true;
+      audio.style.marginTop = "8px";
+      audio.style.width = "100%";
+      div.appendChild(audio);
+    }
+
+    const meta = document.createElement("small");
+    meta.className = "message-meta";
+    const readIds = Array.isArray(data.readByIds) ? data.readByIds : [];
+    const readCount = Math.max(readIds.length - 1, 0);
+    const readDetail = data.uid === user.uid && readCount ? ` ・既読(${readCount}) ${readIds.slice(0,3).join(",")}` : "";
+    meta.textContent = `${data.name || "匿名"}・${formatTime(data.createdAt)}${data.editedAt ? " (編集済み)" : ""}${readDetail}`;
+    div.appendChild(meta);
+
+    if (data.uid === user.uid && data.id) {
+      const actionWrap = document.createElement("div");
+      actionWrap.className = "msg-actions";
+
+      const editBtn = document.createElement("button");
+      editBtn.className = "msg-edit";
+      editBtn.textContent = "編集";
+      editBtn.onclick = () => startEditMessage(data);
+
+      const replyBtn = document.createElement("button");
+      replyBtn.className = "msg-edit";
+      replyBtn.textContent = "返信";
+      replyBtn.onclick = () => setReplyTarget(data);
+
+      const deleteBtn = document.createElement("button");
+      deleteBtn.className = "msg-delete";
+      deleteBtn.textContent = "削除";
+      deleteBtn.onclick = async () => {
+        if (!confirm("このメッセージを削除しますか？")) return;
+        await deleteDoc(doc(db, "messages", data.id));
+        if (editingMessageId === data.id) {
+          cancelEditMode();
+          ui.msgInput.value = "";
+        }
+      };
+
+      actionWrap.append(editBtn, replyBtn, deleteBtn);
+      div.appendChild(actionWrap);
+    }
+
+    ui.messagesDiv.appendChild(div);
+  });
+
+  if (wasNearBottom) {
+    ui.messagesDiv.scrollTop = ui.messagesDiv.scrollHeight;
+  }
+  markMessagesAsRead(readTargetMessages, user).then(() => renderFriends());
+};
+
+document.title = APP_DISPLAY_NAME;
+ui.appTitle.textContent = APP_DISPLAY_NAME;
+document.getElementById("menuBtn").onclick = openSidebar;
+ui.backdrop.onclick = closeSidebar;
+document.getElementById("themeToggle").onclick = () => document.body.classList.toggle("dark");
+ui.notifyBtn.onclick = () => {
+  if (!auth.currentUser) {
+    setStatus("通知の確認はログイン後に利用できます。", "error");
+    return;
+  }
+  ui.notifyPanel.style.display = ui.notifyPanel.style.display === "block" ? "none" : "block";
+};
+document.getElementById("closeNotify").onclick = () => { ui.notifyPanel.style.display = "none"; };
+ui.miniGameBtn.onclick = () => {
+  ui.miniGamePanel.style.display = ui.miniGamePanel.style.display === "block" ? "none" : "block";
+  updateMiniGameView();
+};
+ui.closeMiniGame.onclick = () => { ui.miniGamePanel.style.display = "none"; };
+ui.startMiniGame.onclick = startMiniGame;
+ui.tapMiniGame.onclick = () => {
+  if (!miniGame.running) return;
+  miniGame.score += 1;
+  updateMiniGameView();
+};
+ui.installAppBtn.onclick = async () => {
+  if (!deferredInstallPrompt) {
+    setStatus("この環境ではインストールプロンプトを表示できません。", "error");
+    return;
+  }
+  deferredInstallPrompt.prompt();
+  const result = await deferredInstallPrompt.userChoice;
+  if (result.outcome !== "accepted") {
+    setStatus("インストールはキャンセルされました。", "info");
+  }
+};
+initInstallSupport();
+applyScreenSize(screenSettings);
+syncScreenControls();
+updateRetryButton();
+renderStampBar();
+ui.friendSearchInput.oninput = renderFriends;
+ui.retryQueueBtn.onclick = retryFailedQueue;
+
+const processInviteFromUrl = async () => {
+  if (!auth.currentUser) return;
+  const inviterUid = inviteParams.get("inviteUid");
+  const inviterEmail = normalizeEmail(inviteParams.get("inviteEmail") || "");
+  const inviterName = inviteParams.get("inviteName") || "friend";
+  if (!inviterUid || inviterUid === auth.currentUser.uid || !inviterEmail) return;
+
+  await setDoc(doc(db, "users", auth.currentUser.uid, "friends", friendDocId(inviterEmail)), {
+    uid: inviterUid,
+    email: inviterEmail,
+    name: inviterName,
+    favorite: false,
+    blocked: false,
+    createdAt: serverTimestamp()
+  }, { merge: true });
+
+  await setDoc(doc(db, "users", inviterUid, "friends", friendDocId(auth.currentUser.email || "")), {
+    uid: auth.currentUser.uid,
+    email: normalizeEmail(auth.currentUser.email || ""),
+    name: userSettings.fixedName || auth.currentUser.displayName || "friend",
+    favorite: false,
+    blocked: false,
+    createdAt: serverTimestamp()
+  }, { merge: true });
+
+  setStatus("URL招待からフレンド追加しました。", "success");
+  ui.acceptInviteLink.style.display = "none";
+};
+
+const copyInviteUrl = async () => {
+  if (!auth.currentUser) {
+    setStatus("URLコピーはログイン後に利用できます。", "error");
+    return;
+  }
+  const name = encodeURIComponent(userSettings.fixedName || auth.currentUser.displayName || "friend");
+  const url = `${location.origin}${location.pathname}?inviteUid=${auth.currentUser.uid}&inviteEmail=${encodeURIComponent(normalizeEmail(auth.currentUser.email || ""))}&inviteName=${name}`;
+  const copied = await copyText(url);
+  setStatus(copied ? "招待URLをコピーしました。" : "招待URLのコピーに失敗しました。", copied ? "success" : "error");
+};
+
+ui.copyInviteLink.onclick = copyInviteUrl;
+ui.copyInviteQuick.onclick = copyInviteUrl;
+
+ui.acceptInviteLink.onclick = processInviteFromUrl;
+
+ui.addCustomStamp.onclick = async () => {
+  if (!auth.currentUser || !ui.customStampInput.files[0]) {
+    setStatus("追加するスタンプ画像を選択してください。", "error");
+    return;
+  }
+  try {
+    const compressed = await compressImageFile(ui.customStampInput.files[0], 512, 0.76);
+    const dataUrl = await fileToDataUrl(compressed);
+    customStamps = [...customStamps, dataUrl].slice(-24);
+    await setDoc(doc(db, "users", auth.currentUser.uid), { customStamps }, { merge: true });
+    ui.customStampInput.value = "";
+    renderStampBar();
+    setStatus("カスタムスタンプを追加しました。", "success");
+  } catch (error) {
+    console.error("custom stamp failed", error);
+    setStatus("カスタムスタンプの追加に失敗しました。画像サイズを小さくして再試行してください。", "error");
+  }
+};
+
+ui.fontSizeSlider.oninput = (event) => {
+  document.documentElement.style.setProperty("--msg-font-size", `${event.target.value}px`);
+};
+
+ui.screenPreset.onchange = () => {
+  const isCustom = ui.screenPreset.value === "custom";
+  ui.customWidth.disabled = !isCustom;
+  ui.customHeight.disabled = !isCustom;
+};
+
+ui.applyScreenSize.onclick = () => {
+  const preset = ui.screenPreset.value;
+  const next = {
+    preset,
+    customWidth: Number(ui.customWidth.value) || 420,
+    customHeight: Number(ui.customHeight.value) || 760
+  };
+  if (preset === "custom" && (!ui.customWidth.value || !ui.customHeight.value)) {
+    setStatus("カスタムサイズの幅と高さを入力してください。", "error");
+    return;
+  }
+  screenSettings = next;
+  applyScreenSize(screenSettings);
+  persistScreenSettings();
+  setStatus(`画面サイズを${preset === "custom" ? "カスタム" : ui.screenPreset.options[ui.screenPreset.selectedIndex].text}に変更しました。`, "success");
+};
+
+ui.googleLoginBtn.onclick = () => signInWithPopup(auth, googleProvider)
+  .then(() => setStatus("Googleでログインしました。", "success"))
+  .catch(showAuthError);
+
+document.getElementById("register").onclick = async () => {
+  try {
+    setStatus("");
+    const credential = await createUserWithEmailAndPassword(auth, ui.emailInput.value, ui.passwordInput.value);
+    if (ui.displayNameInput.value.trim()) {
+      await updateProfile(credential.user, { displayName: ui.displayNameInput.value.trim() });
+    }
+    setStatus("新規登録に成功しました。", "success");
+  } catch (error) {
+    showAuthError(error);
+  }
+};
+
+document.getElementById("login").onclick = async () => {
+  try {
+    setStatus("");
+    await signInWithEmailAndPassword(auth, ui.emailInput.value, ui.passwordInput.value);
+    setStatus("ログインに成功しました。", "success");
+  } catch (error) {
+    showAuthError(error);
+  }
+};
+
+document.getElementById("logout").onclick = () => signOut(auth);
+
+onAuthStateChanged(auth, (user) => {
+  if (!user) {
+    ui.authDiv.style.display = "grid";
+    ui.chatDiv.style.display = "none";
     return;
   }
 
-  authDiv.style.display="none";
-  chatDiv.style.display="flex";
+  ui.authDiv.style.display = "none";
+  ui.chatDiv.style.display = "flex";
 
-  const q=query(collection(db,"messages"),
-    orderBy("createdAt"));
+  onSnapshot(query(collection(db, "messages"), orderBy("createdAt")), (snap) => {
+    allMessages = [];
+    snap.forEach((d) => allMessages.push({ id: d.id, ...d.data() }));
+    renderMessages();
+  });
 
-  onSnapshot(q,snap=>{
-    messagesDiv.innerHTML="";
-    snap.forEach(doc=>{
-      const data=doc.data();
-      const div=document.createElement("div");
-      div.className="msg "+(data.uid===user.uid?"me":"other");
-      div.innerHTML=data.text||"";
+  onSnapshot(collection(db, "users", user.uid, "friends"), (snap) => {
+    friends = [];
+    snap.forEach((d) => friends.push({ id: d.id, ...d.data(), email: normalizeEmail(d.data().email || decodeURIComponent(d.id)) }));
+    renderFriends();
+    renderMessages();
+  });
 
-      if(data.image){
-        const img=document.createElement("img");
-        img.src=data.image;
-        img.className="chatimg";
-        div.appendChild(img);
-      }
+  onSnapshot(collection(db, "users", user.uid, "notifications"), (snap) => {
+    notifications = [];
+    snap.forEach((d) => notifications.push({ id: d.id, ...d.data() }));
+    renderNotifications();
+  });
 
-      messagesDiv.appendChild(div);
-    });
-    messagesDiv.scrollTop=messagesDiv.scrollHeight;
+  onSnapshot(collection(db, "users", user.uid, "sentRequests"), (snap) => {
+    sentRequests = [];
+    snap.forEach((d) => sentRequests.push({ id: d.id, ...d.data() }));
+    renderNotifications();
+  });
+
+  onSnapshot(doc(db, "users", user.uid), (snap) => {
+    const data = snap.data() || {};
+    userSettings = {
+      profileImage: data.profileImage || "",
+      backgroundImage: data.backgroundImage || "",
+      fixedName: data.fixedName || "",
+      customStamps: Array.isArray(data.customStamps) ? data.customStamps : []
+    };
+    customStamps = userSettings.customStamps || [];
+    renderStampBar();
+    applyUserSettings();
+    ensureFixedDisplayName(user);
+    const hasInvite = inviteParams.get("inviteUid") && inviteParams.get("inviteUid") !== user.uid;
+    ui.acceptInviteLink.style.display = hasInvite ? "block" : "none";
   });
 });
 
-/* 送信 */
-document.getElementById("send").onclick=async()=>{
-  if(!auth.currentUser)return;
+ui.searchInput.oninput = renderMessages;
 
-  let imageBase64=null;
-  const file=imageInput.files[0];
-
-  if(file){
-    imageBase64=await new Promise(res=>{
-      const reader=new FileReader();
-      reader.onload=()=>res(reader.result);
-      reader.readAsDataURL(file);
-    });
-  }
-
-  await addDoc(collection(db,"messages"),{
-    text:msgInput.value,
-    image:imageBase64,
-    uid:auth.currentUser.uid,
-    createdAt:serverTimestamp()
-  });
-
-  msgInput.value="";
-  imageInput.value="";
+ui.profileImageInput.onchange = async () => {
+  if (!auth.currentUser || !ui.profileImageInput.files[0]) return;
+  const compressed = await compressImageFile(ui.profileImageInput.files[0]);
+  const dataUrl = await fileToDataUrl(compressed);
+  await setDoc(doc(db, "users", auth.currentUser.uid), { profileImage: dataUrl }, { merge: true });
+  setStatus("プロフィール画像を更新しました。", "success");
+  ui.profileImageInput.value = "";
 };
 
-/* AI */
-document.getElementById("aiBtn").onclick=async()=>{
-  const text=msgInput.value;
-  if(!text)return;
+ui.backgroundImageInput.onchange = async () => {
+  if (!auth.currentUser || !ui.backgroundImageInput.files[0]) return;
+  const compressed = await compressImageFile(ui.backgroundImageInput.files[0]);
+  const dataUrl = await fileToDataUrl(compressed);
+  await setDoc(doc(db, "users", auth.currentUser.uid), { backgroundImage: dataUrl }, { merge: true });
+  setStatus("背景画像を更新しました。", "success");
+  ui.backgroundImageInput.value = "";
+};
 
-  const res=await fetch(
-  "https://api.groq.com/openai/v1/chat/completions",{
-    method:"POST",
-    headers:{
-      "Content-Type":"application/json",
-      "Authorization":"org_01kjpzdja9fantcz1g0jmhare9"
+ui.msgInput.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    document.getElementById("send").click();
+  }
+  if (event.key === "Escape" && editingMessageId) {
+    cancelEditMode();
+    ui.msgInput.value = "";
+    setStatus("編集モードを解除しました。", "info");
+  }
+});
+
+document.getElementById("sendFriendRequest").onclick = async () => {
+  if (!auth.currentUser) return;
+  const targetName = (ui.friendRequestName.value || "").trim();
+  if (!targetName) {
+    setStatus("申請したい相手の表示名を入力してください。", "error");
+    return;
+  }
+
+  const q = query(collection(db, "users"), where("fixedName", "==", targetName), limit(1));
+  const result = await getDocs(q);
+  if (result.empty) {
+    setStatus("その表示名のユーザーが見つかりません。", "error");
+    return;
+  }
+
+  const targetDoc = result.docs[0];
+  if (targetDoc.id === auth.currentUser.uid) {
+    setStatus("自分自身には申請できません。", "error");
+    return;
+  }
+
+  await setDoc(doc(db, "users", targetDoc.id, "notifications", `${auth.currentUser.uid}`), {
+    fromUid: auth.currentUser.uid,
+    fromEmail: normalizeEmail(auth.currentUser.email || ""),
+    fromName: userSettings.fixedName || auth.currentUser.displayName || (auth.currentUser.email || "").split("@")[0],
+    status: "pending",
+    createdAt: serverTimestamp()
+  }, { merge: true });
+
+  await setDoc(doc(db, "users", auth.currentUser.uid, "sentRequests", `${targetDoc.id}`), {
+    toUid: targetDoc.id,
+    toName: targetName,
+    status: "pending",
+    createdAt: serverTimestamp()
+  }, { merge: true });
+
+  ui.friendRequestName.value = "";
+  setStatus("フレンド申請を通知ボックスへ送りました。", "success");
+};
+
+document.getElementById("addFriend").onclick = async () => {
+  if (!auth.currentUser) return;
+  const email = normalizeEmail(ui.friendEmail.value);
+  if (!email || !email.includes("@")) {
+    setStatus("有効なメールアドレスでフレンド追加してください。", "error");
+    return;
+  }
+
+  await setDoc(doc(db, "users", auth.currentUser.uid, "friends", friendDocId(email)), {
+    email,
+    name: (ui.friendName.value || "").trim() || email.split("@")[0],
+    favorite: false,
+    blocked: false,
+    createdAt: serverTimestamp()
+  }, { merge: true });
+
+  ui.friendEmail.value = "";
+  ui.friendName.value = "";
+  setStatus("フレンドを追加しました。", "success");
+};
+
+
+document.getElementById("recordBtn").onclick = async () => {
+  if (!auth.currentUser) return;
+  if (!canSendToCurrentFriend()) return;
+
+  if (mediaRecorder && mediaRecorder.state === "recording") {
+    mediaRecorder.stop();
+    document.getElementById("recordBtn").textContent = "🎤録音";
+    setStatus("録音を停止して送信中です...", "info");
+    return;
+  }
+
+  try {
+    recordingStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    mediaRecorder = new MediaRecorder(recordingStream);
+    const chunks = [];
+
+    mediaRecorder.ondataavailable = (event) => {
+      if (event.data.size > 0) chunks.push(event.data);
+    };
+
+    mediaRecorder.onstop = async () => {
+      const blob = new Blob(chunks, { type: "audio/webm" });
+      const audioBase64 = await fileToDataUrl(new File([blob], "voice.webm", { type: "audio/webm" }));
+
+      await postMessage({ text: "🎤 音声メッセージ", image: null, audio: audioBase64 });
+
+      if (recordingStream) {
+        recordingStream.getTracks().forEach((track) => track.stop());
+      }
+      setStatus("録音した音声を送信しました。", "success");
+    };
+
+    mediaRecorder.start();
+    document.getElementById("recordBtn").textContent = "■停止";
+    setStatus("録音中...もう一度押すと自動送信します。", "info");
+  } catch (error) {
+    setStatus("マイクを利用できませんでした。ブラウザ権限を確認してください。", "error");
+  }
+};
+
+document.getElementById("send").onclick = async () => {
+  if (!auth.currentUser) return;
+  if (!canSendToCurrentFriend()) return;
+  const text = ui.msgInput.value.trim();
+
+  if (editingMessageId) {
+    if (!text) {
+      setStatus("編集メッセージは空にできません。", "error");
+      return;
+    }
+    await updateDoc(doc(db, "messages", editingMessageId), {
+      text,
+      editedAt: serverTimestamp()
+    });
+    cancelEditMode();
+    ui.msgInput.value = "";
+    ui.imageInput.value = "";
+    setStatus("メッセージを更新しました。", "success");
+    return;
+  }
+
+  if (!text && !ui.imageInput.files[0]) return;
+
+  let imageBase64 = null;
+  const file = ui.imageInput.files[0];
+
+  if (file) {
+    const compressed = await compressImageFile(file);
+    imageBase64 = await fileToDataUrl(compressed);
+  }
+
+  await postMessage({
+    text,
+    image: imageBase64,
+    audio: null,
+    replyToId: replyingTo?.id || null,
+    replyToText: replyingTo?.text ? replyingTo.text.slice(0, 80) : null,
+    replyToName: replyingTo?.name || null
+  });
+
+  replyingTo = null;
+  ui.replyPreview.style.display = "none";
+  ui.replyPreview.innerHTML = "";
+  ui.msgInput.value = "";
+  ui.imageInput.value = "";
+};
+
+document.getElementById("aiBtn").onclick = async () => {
+  const text = ui.msgInput.value;
+  if (!text) return;
+
+  const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": "org_01kjpzdja9fantcz1g0jmhare9"
     },
-    body:JSON.stringify({
-      model:"gemma-7b-it",
-      messages:[{role:"user",content:text}]
+    body: JSON.stringify({
+      model: "gemma-7b-it",
+      messages: [{ role: "user", content: text }]
     })
   });
 
-  const data=await res.json();
-  msgInput.value=data.choices[0].message.content;
+  const data = await res.json();
+  ui.msgInput.value = data.choices?.[0]?.message?.content || "AI応答を取得できませんでした";
 };
 </script>
 </body>
