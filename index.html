@@ -400,6 +400,71 @@ button { background: var(--line-green); color: white; border: none; cursor: poin
   cursor: not-allowed;
 }
 
+#videoCallBtn {
+  background: #7c3aed;
+}
+
+#incomingCallBar {
+  position: absolute;
+  top: 72px;
+  left: 12px;
+  right: 12px;
+  z-index: 22;
+  display: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: #0f172a;
+  color: #fff;
+  border-radius: 12px;
+  padding: 10px;
+}
+
+#incomingCallBar button {
+  padding: 6px 10px;
+  border-radius: 8px;
+}
+
+#callOverlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(2, 6, 23, .88);
+  z-index: 23;
+  display: none;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+}
+
+#callHeader {
+  color: #fff;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+#callVideoGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  min-height: 0;
+  flex: 1;
+}
+
+.call-video {
+  width: 100%;
+  height: 100%;
+  min-height: 200px;
+  border-radius: 12px;
+  background: #000;
+  object-fit: cover;
+  border: 1px solid rgba(255,255,255,.2);
+}
+
+#endCallBtn {
+  background: #ef4444;
+}
+
 body.dark {
   --bg-gradient: linear-gradient(160deg, #0f172a 0%, #111827 60%, #1f2937 100%);
   --surface: #111827;
@@ -489,6 +554,25 @@ body.dark .other { background: #1f2937; color: #f9fafb; }
     <button id="tapMiniGame" style="margin-top:10px;width:100%;min-height:74px;font-size:1.1rem;background:#f59e0b;" disabled>タップ！</button>
   </div>
 
+  <div id="incomingCallBar">
+    <small id="incomingCallText">着信中...</small>
+    <div style="display:flex;gap:6px;">
+      <button id="acceptCallBtn" style="background:#06c755;">応答</button>
+      <button id="rejectCallBtn" style="background:#ef4444;">拒否</button>
+    </div>
+  </div>
+
+  <div id="callOverlay">
+    <div id="callHeader">
+      <strong id="callStatusText">ビデオ通話</strong>
+      <button id="endCallBtn">通話終了</button>
+    </div>
+    <div id="callVideoGrid">
+      <video id="remoteVideo" class="call-video" autoplay playsinline></video>
+      <video id="localVideo" class="call-video" autoplay muted playsinline></video>
+    </div>
+  </div>
+
   <div id="auth">
     <h2 style="margin:0">ログインしてチャットを始めましょう</h2>
     <p style="margin:0;color:var(--text-muted)">Google またはメールアドレスでサインインできます。</p>
@@ -507,6 +591,7 @@ body.dark .other { background: #1f2937; color: #f9fafb; }
       <input id="searchInput" placeholder="メッセージ検索...">
       <button id="copyInviteQuick" style="background:#0ea5e9">URLコピー</button>
       <button id="retryQueueBtn" style="background:#f59e0b">再送</button>
+      <button id="videoCallBtn" title="フレンドとビデオ通話">📹通話</button>
       <small id="chatMode" style="align-self:center;white-space:nowrap">全体</small>
     </div>
     <div id="messages"></div>
@@ -596,6 +681,16 @@ const ui = {
   addCustomStamp: document.getElementById("addCustomStamp"),
   fontSizeSlider: document.getElementById("fontSizeSlider"),
   retryQueueBtn: document.getElementById("retryQueueBtn"),
+  videoCallBtn: document.getElementById("videoCallBtn"),
+  incomingCallBar: document.getElementById("incomingCallBar"),
+  incomingCallText: document.getElementById("incomingCallText"),
+  acceptCallBtn: document.getElementById("acceptCallBtn"),
+  rejectCallBtn: document.getElementById("rejectCallBtn"),
+  callOverlay: document.getElementById("callOverlay"),
+  callStatusText: document.getElementById("callStatusText"),
+  endCallBtn: document.getElementById("endCallBtn"),
+  remoteVideo: document.getElementById("remoteVideo"),
+  localVideo: document.getElementById("localVideo"),
   screenPreset: document.getElementById("screenPreset"),
   customWidth: document.getElementById("customWidth"),
   customHeight: document.getElementById("customHeight"),
@@ -629,6 +724,10 @@ let miniGame = {
   timerId: null,
   best: Number(localStorage.getItem("line_minigame_best") || 0)
 };
+const rtcConfig = { iceServers: [{ urls: ["stun:stun.l.google.com:19302"] }] };
+let activeCall = { id: null, pc: null, localStream: null, unsubscribers: [], isCaller: false };
+let pendingIncomingCall = null;
+let incomingCallWatcher = null;
 
 const authErrorMessages = {
   "auth/email-already-in-use": "このメールアドレスはすでに登録されています。ログインをお試しください。",
@@ -748,6 +847,194 @@ const initInstallSupport = () => {
     ui.installAppBtn.style.display = "none";
     setStatus("アプリをインストールしました。", "success");
   });
+};
+
+const resetCallUi = () => {
+  ui.callOverlay.style.display = "none";
+  ui.incomingCallBar.style.display = "none";
+  ui.callStatusText.textContent = "ビデオ通話";
+  ui.incomingCallText.textContent = "着信中...";
+  ui.remoteVideo.srcObject = null;
+  ui.localVideo.srcObject = null;
+};
+
+const closeActiveCall = async (nextStatus = null) => {
+  if (nextStatus && activeCall.id) {
+    try {
+      await updateDoc(doc(db, "calls", activeCall.id), { status: nextStatus, endedAt: serverTimestamp() });
+    } catch (_error) {}
+  }
+  activeCall.unsubscribers.forEach((fn) => fn && fn());
+  activeCall.unsubscribers = [];
+  if (activeCall.pc) {
+    try { activeCall.pc.close(); } catch (_error) {}
+  }
+  if (activeCall.localStream) {
+    activeCall.localStream.getTracks().forEach((t) => t.stop());
+  }
+  activeCall = { id: null, pc: null, localStream: null, unsubscribers: [], isCaller: false };
+  pendingIncomingCall = null;
+  resetCallUi();
+};
+
+const beginIncomingCallWatcher = (user) => {
+  if (incomingCallWatcher) incomingCallWatcher();
+  const myEmail = normalizeEmail(user.email || "");
+  incomingCallWatcher = onSnapshot(query(collection(db, "calls"), where("targetEmail", "==", myEmail)), (snap) => {
+    const ringing = snap.docs
+      .map((d) => ({ id: d.id, ...d.data() }))
+      .find((call) => call.status === "ringing");
+
+    if (!ringing || activeCall.id === ringing.id) {
+      if (!activeCall.id) ui.incomingCallBar.style.display = "none";
+      return;
+    }
+
+    pendingIncomingCall = ringing;
+    ui.incomingCallText.textContent = `${ringing.callerName || ringing.callerEmail || "フレンド"} から着信中`;
+    ui.incomingCallBar.style.display = "flex";
+  });
+};
+
+const attachCallCommonHandlers = (pc) => {
+  pc.ontrack = (event) => {
+    const [remoteStream] = event.streams;
+    if (remoteStream) ui.remoteVideo.srcObject = remoteStream;
+  };
+  pc.onconnectionstatechange = () => {
+    if (pc.connectionState === "connected") {
+      ui.callStatusText.textContent = "通話中";
+    }
+    if (["disconnected", "failed", "closed"].includes(pc.connectionState)) {
+      closeActiveCall();
+    }
+  };
+};
+
+const startVideoCall = async () => {
+  if (!auth.currentUser) return;
+  if (!selectedFriendEmail) {
+    setStatus("1:1の相手を選んでからビデオ通話してください。", "error");
+    return;
+  }
+  if (!canSendToCurrentFriend()) return;
+  if (activeCall.id) {
+    setStatus("すでに通話中です。", "error");
+    return;
+  }
+
+  const localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+  ui.localVideo.srcObject = localStream;
+  ui.callOverlay.style.display = "flex";
+  ui.callStatusText.textContent = "発信中...";
+
+  const callId = buildConversationId(auth.currentUser.email || "", selectedFriendEmail);
+  const pc = new RTCPeerConnection(rtcConfig);
+  attachCallCommonHandlers(pc);
+  localStream.getTracks().forEach((track) => pc.addTrack(track, localStream));
+
+  activeCall = { id: callId, pc, localStream, unsubscribers: [], isCaller: true };
+
+  const callRef = doc(db, "calls", callId);
+  await setDoc(callRef, {
+    callerUid: auth.currentUser.uid,
+    callerEmail: normalizeEmail(auth.currentUser.email || ""),
+    callerName: userSettings.fixedName || auth.currentUser.displayName || "friend",
+    targetEmail: normalizeEmail(selectedFriendEmail),
+    status: "ringing",
+    createdAt: serverTimestamp()
+  }, { merge: true });
+
+  pc.onicecandidate = async (event) => {
+    if (!event.candidate) return;
+    await addDoc(collection(db, "calls", callId, "offerCandidates"), event.candidate.toJSON());
+  };
+
+  const offer = await pc.createOffer();
+  await pc.setLocalDescription(offer);
+  await updateDoc(callRef, { offer: { type: offer.type, sdp: offer.sdp } });
+
+  activeCall.unsubscribers.push(onSnapshot(doc(db, "calls", callId), async (snap) => {
+    const data = snap.data();
+    if (!data) return;
+    if (data.status === "rejected") {
+      setStatus("通話は拒否されました。", "error");
+      await closeActiveCall();
+      return;
+    }
+    if (data.status === "ended") {
+      await closeActiveCall();
+      return;
+    }
+    if (data.answer && !pc.currentRemoteDescription) {
+      await pc.setRemoteDescription(new RTCSessionDescription(data.answer));
+    }
+  }));
+
+  activeCall.unsubscribers.push(onSnapshot(collection(db, "calls", callId, "answerCandidates"), (snap) => {
+    snap.docChanges().forEach((change) => {
+      if (change.type === "added") {
+        pc.addIceCandidate(new RTCIceCandidate(change.doc.data())).catch(() => {});
+      }
+    });
+  }));
+};
+
+const acceptIncomingCall = async () => {
+  if (!auth.currentUser || !pendingIncomingCall) return;
+  if (activeCall.id) {
+    setStatus("別の通話中です。", "error");
+    return;
+  }
+  const callId = pendingIncomingCall.id;
+  const callRef = doc(db, "calls", callId);
+  const localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+  ui.localVideo.srcObject = localStream;
+  ui.callOverlay.style.display = "flex";
+  ui.incomingCallBar.style.display = "none";
+  ui.callStatusText.textContent = "接続中...";
+
+  const pc = new RTCPeerConnection(rtcConfig);
+  attachCallCommonHandlers(pc);
+  localStream.getTracks().forEach((track) => pc.addTrack(track, localStream));
+  activeCall = { id: callId, pc, localStream, unsubscribers: [], isCaller: false };
+
+  pc.onicecandidate = async (event) => {
+    if (!event.candidate) return;
+    await addDoc(collection(db, "calls", callId, "answerCandidates"), event.candidate.toJSON());
+  };
+
+  if (pendingIncomingCall.offer) {
+    await pc.setRemoteDescription(new RTCSessionDescription(pendingIncomingCall.offer));
+  }
+  const answer = await pc.createAnswer();
+  await pc.setLocalDescription(answer);
+  await updateDoc(callRef, {
+    answer: { type: answer.type, sdp: answer.sdp },
+    status: "connected",
+    acceptedAt: serverTimestamp()
+  });
+
+  activeCall.unsubscribers.push(onSnapshot(collection(db, "calls", callId, "offerCandidates"), (snap) => {
+    snap.docChanges().forEach((change) => {
+      if (change.type === "added") {
+        pc.addIceCandidate(new RTCIceCandidate(change.doc.data())).catch(() => {});
+      }
+    });
+  }));
+
+  activeCall.unsubscribers.push(onSnapshot(callRef, async (snap) => {
+    const data = snap.data();
+    if (!data) return;
+    if (data.status === "ended") await closeActiveCall();
+  }));
+};
+
+const rejectIncomingCall = async () => {
+  if (!pendingIncomingCall) return;
+  await updateDoc(doc(db, "calls", pendingIncomingCall.id), { status: "rejected", endedAt: serverTimestamp() });
+  pendingIncomingCall = null;
+  ui.incomingCallBar.style.display = "none";
 };
 
 const setStatus = (message, type="info") => {
@@ -1313,6 +1600,18 @@ ui.installAppBtn.onclick = async () => {
     setStatus("インストールはキャンセルされました。", "info");
   }
 };
+ui.videoCallBtn.onclick = () => startVideoCall().catch((error) => {
+  console.error("start call failed", error);
+  setStatus("ビデオ通話を開始できませんでした。カメラ/マイク権限を確認してください。", "error");
+  closeActiveCall();
+});
+ui.acceptCallBtn.onclick = () => acceptIncomingCall().catch((error) => {
+  console.error("accept call failed", error);
+  setStatus("着信の応答に失敗しました。", "error");
+  closeActiveCall();
+});
+ui.rejectCallBtn.onclick = () => rejectIncomingCall().catch(() => {});
+ui.endCallBtn.onclick = () => closeActiveCall("ended");
 initInstallSupport();
 applyScreenSize(screenSettings);
 syncScreenControls();
@@ -1443,6 +1742,11 @@ document.getElementById("logout").onclick = () => signOut(auth);
 
 onAuthStateChanged(auth, (user) => {
   if (!user) {
+    if (incomingCallWatcher) {
+      incomingCallWatcher();
+      incomingCallWatcher = null;
+    }
+    closeActiveCall();
     ui.authDiv.style.display = "grid";
     ui.chatDiv.style.display = "none";
     return;
@@ -1450,6 +1754,7 @@ onAuthStateChanged(auth, (user) => {
 
   ui.authDiv.style.display = "none";
   ui.chatDiv.style.display = "flex";
+  beginIncomingCallWatcher(user);
 
   onSnapshot(query(collection(db, "messages"), orderBy("createdAt")), (snap) => {
     allMessages = [];
