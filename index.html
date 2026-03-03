@@ -530,6 +530,15 @@ body.dark .other { background: #1f2937; color: #f9fafb; }
       </div>
       <button id="applyScreenSize" style="margin-top:8px;width:100%;background:#0ea5e9">サイズを適用</button>
     </div>
+    <div class="sidebar-section">
+      <label for="geminiApiKey">Gemini Developer APIキー（任意）</label>
+      <input id="geminiApiKey" type="password" placeholder="AIza..." autocomplete="off" style="margin-top:8px;">
+      <div class="inline-btn-row" style="margin-top:8px;">
+        <button id="saveGeminiKey" style="background:#2563eb;">APIキー保存</button>
+        <button id="clearGeminiKey" style="background:#64748b;">削除</button>
+      </div>
+      <small id="geminiKeyHint" style="display:block;margin-top:6px;color:var(--text-muted);">学校PC向け: Vertex AIが使えない時はGemini Developer APIを利用できます。</small>
+    </div>
   </aside>
 
   <header>
@@ -710,7 +719,11 @@ const ui = {
   screenPreset: document.getElementById("screenPreset"),
   customWidth: document.getElementById("customWidth"),
   customHeight: document.getElementById("customHeight"),
-  applyScreenSize: document.getElementById("applyScreenSize")
+  applyScreenSize: document.getElementById("applyScreenSize"),
+  geminiApiKey: document.getElementById("geminiApiKey"),
+  saveGeminiKey: document.getElementById("saveGeminiKey"),
+  clearGeminiKey: document.getElementById("clearGeminiKey"),
+  geminiKeyHint: document.getElementById("geminiKeyHint")
 };
 
 let allMessages = [];
@@ -749,6 +762,8 @@ let aiModel = null;
 let aiModelIndex = 0;
 let vertexAIInstance = null;
 const AI_MODEL_CANDIDATES = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"];
+const GEMINI_API_MODEL_CANDIDATES = ["gemini-2.5-flash-lite", "gemini-2.5-flash", "gemini-2.0-flash"];
+let geminiApiKey = localStorage.getItem("line_gemini_api_key") || "";
 
 const authErrorMessages = {
   "auth/email-already-in-use": "このメールアドレスはすでに登録されています。ログインをお試しください。",
@@ -1665,6 +1680,7 @@ initInstallSupport();
 applyScreenSize(screenSettings);
 syncScreenControls();
 updateRetryButton();
+updateGeminiKeyHint();
 renderStampBar();
 ui.friendSearchInput.oninput = renderFriends;
 ui.retryQueueBtn.onclick = retryFailedQueue;
@@ -1758,6 +1774,26 @@ ui.applyScreenSize.onclick = () => {
   applyScreenSize(screenSettings);
   persistScreenSettings();
   setStatus(`画面サイズを${preset === "custom" ? "カスタム" : ui.screenPreset.options[ui.screenPreset.selectedIndex].text}に変更しました。`, "success");
+};
+
+ui.saveGeminiKey.onclick = () => {
+  geminiApiKey = (ui.geminiApiKey.value || "").trim();
+  if (!geminiApiKey) {
+    setStatus("Gemini APIキーを入力してください。", "error");
+    return;
+  }
+  localStorage.setItem("line_gemini_api_key", geminiApiKey);
+  aiChatSession = null;
+  aiModel = null;
+  updateGeminiKeyHint();
+  setStatus("Gemini Developer APIキーを保存しました。", "success");
+};
+
+ui.clearGeminiKey.onclick = () => {
+  geminiApiKey = "";
+  localStorage.removeItem("line_gemini_api_key");
+  updateGeminiKeyHint();
+  setStatus("Gemini APIキーを削除しました。", "info");
 };
 
 ui.googleLoginBtn.onclick = () => signInWithPopup(auth, googleProvider)
@@ -2060,7 +2096,63 @@ const getAiChatSession = () => {
   return aiChatSession;
 };
 
+function maskApiKey(key) {
+  if (!key) return "未設定";
+  if (key.length <= 8) return `${key.slice(0, 2)}****`;
+  return `${key.slice(0, 4)}****${key.slice(-4)}`;
+}
+
+function updateGeminiKeyHint() {
+  ui.geminiApiKey.value = geminiApiKey;
+  ui.geminiKeyHint.textContent = geminiApiKey
+    ? `Gemini APIキー保存済み: ${maskApiKey(geminiApiKey)}（AIボタンでGemini Developer APIを優先利用）`
+    : "学校PC向け: Vertex AIが使えない時はGemini Developer APIを利用できます。";
+}
+
+async function askGeminiDeveloperApi(text) {
+  if (!geminiApiKey) throw new Error("GEMINI_API_KEY_NOT_SET");
+  let lastError = null;
+  for (const model of GEMINI_API_MODEL_CANDIDATES) {
+    try {
+      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(geminiApiKey)}`;
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ role: "user", parts: [{ text }] }],
+          systemInstruction: {
+            role: "system",
+            parts: [{ text: "あなたはLINE風チャットアプリの日本語アシスタントです。短く分かりやすく回答してください。" }]
+          },
+          generationConfig: { temperature: 0.7, maxOutputTokens: 512 }
+        })
+      });
+
+      if (!response.ok) {
+        const payload = await response.text();
+        const err = new Error(`GEMINI_API_${response.status}: ${payload}`);
+        const lower = payload.toLowerCase();
+        if ((response.status === 404 || response.status === 400) && (lower.includes("not found") || lower.includes("retired") || lower.includes("not supported"))) {
+          lastError = err;
+          continue;
+        }
+        throw err;
+      }
+
+      const data = await response.json();
+      const answer = data?.candidates?.[0]?.content?.parts?.map((part) => part?.text || "").join("\n").trim() || "";
+      return answer || "AI応答を取得できませんでした";
+    } catch (error) {
+      lastError = error;
+      if (String(error?.message || "").includes("GEMINI_API_404")) continue;
+      throw error;
+    }
+  }
+  throw lastError || new Error("GEMINI_DEVELOPER_API_UNAVAILABLE");
+}
+
 const buildLocalAiFallback = (text) => {
+
   const clean = safeText(text).slice(0, 120);
   return `（AI簡易応答）「${clean}」ですね。Firebase AI Logicが未有効のため簡易モードで返信しました。Firebase ConsoleでVertex AI in Firebase APIを有効化すると本格応答になります。`;
 };
@@ -2097,8 +2189,14 @@ document.getElementById("aiBtn").onclick = async () => {
   }
 
   try {
-    setStatus(`Firebase AI Logicで応答を生成中... (${getCurrentAiModelName()})`, "info");
-    const answer = await askAiWithFallback(text);
+    let answer = "";
+    if (geminiApiKey) {
+      setStatus("Gemini Developer APIで応答を生成中...", "info");
+      answer = await askGeminiDeveloperApi(text);
+    } else {
+      setStatus(`Firebase AI Logicで応答を生成中... (${getCurrentAiModelName()})`, "info");
+      answer = await askAiWithFallback(text);
+    }
 
     if (auth.currentUser) {
       await postMessage({ text: `🤖 ${answer}`, image: null, audio: null });
@@ -2116,7 +2214,7 @@ document.getElementById("aiBtn").onclick = async () => {
     } else {
       ui.msgInput.value = fallbackText;
     }
-    setStatus("Firebase AI Logicに接続できないため簡易AIモードで返信しました。", "info");
+    setStatus("AI接続に失敗したため簡易AIモードで返信しました。", "info");
   }
 };
 </script>
