@@ -167,6 +167,11 @@ header {
 
 #chat { display: none; flex: 1; flex-direction: column; background: linear-gradient(180deg, #f8fcff 0%, #f2fbf6 100%); min-height: 0; overflow: hidden; }
 
+#chatStatus { display:none; margin: 10px 12px 0; padding: 8px 10px; border-radius: 10px; font-size: .82rem; }
+#chatStatus.error { background: #fef2f2; color:#b91c1c; }
+#chatStatus.success { background: #ecfdf5; color:#047857; }
+#chatStatus.info { background: #eff6ff; color:#1d4ed8; }
+
 #toolbar {
   display: flex;
   gap: 8px;
@@ -595,6 +600,7 @@ body.dark .other { background: #1f2937; color: #f9fafb; }
   </div>
 
   <div id="chat">
+    <div id="chatStatus"></div>
     <div id="toolbar">
       <input id="searchInput" placeholder="メッセージ検索...">
       <button id="copyInviteQuick" style="background:#0ea5e9">URLコピー</button>
@@ -647,6 +653,7 @@ const ui = {
   chatDiv: document.getElementById("chat"),
   messagesDiv: document.getElementById("messages"),
   statusBar: document.getElementById("statusBar"),
+  chatStatus: document.getElementById("chatStatus"),
   googleLoginBtn: document.getElementById("googleLogin"),
   authHint: document.getElementById("authHint"),
   emailInput: document.getElementById("email"),
@@ -1079,11 +1086,17 @@ const setStatus = (message, type="info") => {
     ui.statusBar.style.display = "none";
     ui.statusBar.textContent = "";
     ui.statusBar.className = "";
+    ui.chatStatus.style.display = "none";
+    ui.chatStatus.textContent = "";
+    ui.chatStatus.className = "";
     return;
   }
   ui.statusBar.style.display = "block";
   ui.statusBar.textContent = message;
   ui.statusBar.className = type;
+  ui.chatStatus.style.display = "block";
+  ui.chatStatus.textContent = message;
+  ui.chatStatus.className = type;
 };
 
 const showAuthError = (error) => {
@@ -2047,7 +2060,13 @@ const getAiChatSession = () => {
   return aiChatSession;
 };
 
+const buildLocalAiFallback = (text) => {
+  const clean = safeText(text).slice(0, 120);
+  return `（AI簡易応答）「${clean}」ですね。Firebase AI Logicが未有効のため簡易モードで返信しました。Firebase ConsoleでVertex AI in Firebase APIを有効化すると本格応答になります。`;
+};
+
 const askAiWithFallback = async (text) => {
+
   let lastError = null;
   for (let i = aiModelIndex; i < AI_MODEL_CANDIDATES.length; i++) {
     try {
@@ -2090,7 +2109,14 @@ document.getElementById("aiBtn").onclick = async () => {
     setStatus("AI応答を送信しました。", "success");
   } catch (error) {
     console.error("firebase ai logic error", error);
-    setStatus("AI応答の生成に失敗しました。Firebase AI Logicの有効化と権限設定を確認してください。", "error");
+    const fallbackText = buildLocalAiFallback(text);
+    if (auth.currentUser) {
+      await postMessage({ text: `🤖 ${fallbackText}`, image: null, audio: null }, true);
+      ui.msgInput.value = "";
+    } else {
+      ui.msgInput.value = fallbackText;
+    }
+    setStatus("Firebase AI Logicに接続できないため簡易AIモードで返信しました。", "info");
   }
 };
 </script>
