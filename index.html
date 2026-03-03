@@ -669,7 +669,6 @@ const ui = {
   passwordInput: document.getElementById("password"),
   displayNameInput: document.getElementById("displayName"),
   msgInput: document.getElementById("msg"),
-  aiBtn: document.getElementById("aiBtn"),
   imageInput: document.getElementById("imageInput"),
   profileImageInput: document.getElementById("profileImageInput"),
   backgroundImageInput: document.getElementById("backgroundImageInput"),
@@ -765,8 +764,6 @@ let vertexAIInstance = null;
 const AI_MODEL_CANDIDATES = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"];
 const GEMINI_API_MODEL_CANDIDATES = ["gemini-2.5-flash-lite", "gemini-2.5-flash", "gemini-2.0-flash"];
 let geminiApiKey = localStorage.getItem("line_gemini_api_key") || "";
-let aiCooldownUntil = Number(localStorage.getItem("line_ai_cooldown_until") || 0);
-let aiCooldownTimer = null;
 
 const authErrorMessages = {
   "auth/email-already-in-use": "このメールアドレスはすでに登録されています。ログインをお試しください。",
@@ -1684,10 +1681,6 @@ applyScreenSize(screenSettings);
 syncScreenControls();
 updateRetryButton();
 updateGeminiKeyHint();
-updateAiCooldownUi();
-if (aiCooldownUntil > Date.now()) {
-  aiCooldownTimer = setInterval(updateAiCooldownUi, 1000);
-}
 renderStampBar();
 ui.friendSearchInput.oninput = renderFriends;
 ui.retryQueueBtn.onclick = retryFailedQueue;
@@ -2158,37 +2151,6 @@ async function askGeminiDeveloperApi(text) {
   throw lastError || new Error("GEMINI_DEVELOPER_API_UNAVAILABLE");
 }
 
-const isRateLimitError = (error) => {
-  const text = `${error?.message || ""} ${error?.code || ""}`.toLowerCase();
-  return text.includes("429") || text.includes("resource_exhausted") || text.includes("quota") || text.includes("rate");
-};
-
-const updateAiCooldownUi = () => {
-  const remainingMs = aiCooldownUntil - Date.now();
-  if (remainingMs <= 0) {
-    aiCooldownUntil = 0;
-    localStorage.removeItem("line_ai_cooldown_until");
-    ui.aiBtn.disabled = false;
-    ui.aiBtn.textContent = "AI";
-    if (aiCooldownTimer) {
-      clearInterval(aiCooldownTimer);
-      aiCooldownTimer = null;
-    }
-    return;
-  }
-  const sec = Math.ceil(remainingMs / 1000);
-  ui.aiBtn.disabled = true;
-  ui.aiBtn.textContent = `AI(${sec})`;
-};
-
-const startAiCooldown = (seconds = 60) => {
-  aiCooldownUntil = Date.now() + (seconds * 1000);
-  localStorage.setItem("line_ai_cooldown_until", String(aiCooldownUntil));
-  updateAiCooldownUi();
-  if (aiCooldownTimer) clearInterval(aiCooldownTimer);
-  aiCooldownTimer = setInterval(updateAiCooldownUi, 1000);
-};
-
 const buildLocalAiFallback = (text) => {
 
   const clean = safeText(text).slice(0, 120);
@@ -2219,13 +2181,7 @@ const askAiWithFallback = async (text) => {
   throw lastError || new Error("AI model unavailable");
 };
 
-ui.aiBtn.onclick = async () => {
-  updateAiCooldownUi();
-  if (aiCooldownUntil > Date.now()) {
-    setStatus(`AIはクールダウン中です。${Math.ceil((aiCooldownUntil - Date.now())/1000)}秒後に再試行してください。`, "error");
-    return;
-  }
-
+document.getElementById("aiBtn").onclick = async () => {
   const text = ui.msgInput.value.trim();
   if (!text) {
     setStatus("AIに質問するメッセージを入力してください。", "error");
@@ -2251,10 +2207,6 @@ ui.aiBtn.onclick = async () => {
     setStatus("AI応答を送信しました。", "success");
   } catch (error) {
     console.error("firebase ai logic error", error);
-    if (isRateLimitError(error)) {
-      startAiCooldown(60);
-      setStatus("429制限のためAIを60秒クールダウンします。しばらく待って再試行してください。", "error");
-    }
     const fallbackText = buildLocalAiFallback(text);
     if (auth.currentUser) {
       await postMessage({ text: `🤖 ${fallbackText}`, image: null, audio: null }, true);
@@ -2262,9 +2214,7 @@ ui.aiBtn.onclick = async () => {
     } else {
       ui.msgInput.value = fallbackText;
     }
-    if (!isRateLimitError(error)) {
-      setStatus("AI接続に失敗したため簡易AIモードで返信しました。", "info");
-    }
+    setStatus("AI接続に失敗したため簡易AIモードで返信しました。", "info");
   }
 };
 </script>
